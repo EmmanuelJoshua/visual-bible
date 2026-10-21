@@ -17,7 +17,98 @@ export type ArtifactMats = {
   water: THREE.MeshStandardMaterial;
   jasper: THREE.MeshStandardMaterial;
   bread: THREE.MeshStandardMaterial;
+  acacia: THREE.MeshStandardMaterial;
+  olive: THREE.MeshStandardMaterial;
+  fir: THREE.MeshStandardMaterial;
+  pitch: THREE.MeshStandardMaterial;
+  silver: THREE.MeshStandardMaterial;
+  goatHair: THREE.MeshStandardMaterial;
+  ramSkin: THREE.MeshStandardMaterial;
+  tachash: THREE.MeshStandardMaterial;
+  /** blue, purple and scarlet bands with cherubim — the veil (Ex 26:31) */
+  veil: THREE.MeshStandardMaterial;
+  /** blue, purple and scarlet without cherubim — door and gate screens (Ex 26:36) */
+  screen: THREE.MeshStandardMaterial;
+  ground: THREE.MeshStandardMaterial;
+  hideTan: THREE.MeshStandardMaterial;
+  hideGrey: THREE.MeshStandardMaterial;
+  hideBrown: THREE.MeshStandardMaterial;
+  hideWhite: THREE.MeshStandardMaterial;
+  flame: THREE.MeshBasicMaterial;
 };
+
+export type MatKey = {
+  [K in keyof ArtifactMats]: ArtifactMats[K] extends THREE.MeshStandardMaterial
+    ? K
+    : never;
+}[keyof ArtifactMats];
+
+/** Woven bands for the veil and screens — procedural, no download. */
+function wovenTexture(cherubim: boolean): THREE.CanvasTexture {
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 256;
+  const g = c.getContext("2d")!;
+  const bands = ["#1f3f8a", "#5a2a6e", "#a8231a", "#efe6d2"];
+  for (let i = 0; i < 16; i++) {
+    g.fillStyle = bands[i % bands.length];
+    g.fillRect(0, i * 16, 256, 16);
+  }
+  // weave grain
+  g.globalAlpha = 0.12;
+  for (let x = 0; x < 256; x += 2) {
+    g.fillStyle = x % 4 ? "#000" : "#fff";
+    g.fillRect(x, 0, 1, 256);
+  }
+  g.globalAlpha = 1;
+  if (cherubim) {
+    // stylised winged figures in gold thread
+    g.strokeStyle = "#e6c46a";
+    g.lineWidth = 3;
+    for (const [cx, cy] of [
+      [64, 80],
+      [192, 80],
+      [64, 200],
+      [192, 200],
+    ]) {
+      g.beginPath();
+      g.moveTo(cx, cy + 26);
+      g.lineTo(cx, cy - 6);
+      g.moveTo(cx, cy - 4);
+      g.quadraticCurveTo(cx - 34, cy - 30, cx - 44, cy + 6);
+      g.moveTo(cx, cy - 4);
+      g.quadraticCurveTo(cx + 34, cy - 30, cx + 44, cy + 6);
+      g.stroke();
+      g.beginPath();
+      g.arc(cx, cy - 14, 7, 0, Math.PI * 2);
+      g.stroke();
+    }
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+
+let glowTex: THREE.CanvasTexture | null = null;
+
+/** Soft radial sprite for lamp glow, the shekinah, and the cloud (Ex 40:34). */
+export function glowTexture(): THREE.CanvasTexture {
+  if (glowTex) return glowTex;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, "rgba(255,255,255,1)");
+  grad.addColorStop(0.35, "rgba(255,255,255,0.55)");
+  grad.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  glowTex = new THREE.CanvasTexture(c);
+  glowTex.colorSpace = THREE.SRGBColorSpace;
+  return glowTex;
+}
 
 type Maps = {
   diff?: THREE.Texture;
@@ -115,7 +206,7 @@ export function loadArtifactMaterials(): Promise<ArtifactMats> {
           env: 1.5,
         }),
         bronze: pbr(bronze, { color: 0xffc090, metalness: 0.85, roughness: 0.38, env: 1.55 }),
-        wood: pbr(wood, { roughness: 0.85, env: 0.35 }),
+        wood: pbr(wood, { color: 0xb08a5e, roughness: 0.85, env: 0.35 }),
         cedar: pbr(wood, { color: 0xb07a48, roughness: 0.8, env: 0.3 }),
         linen: pbr(linen, { color: 0xf2ead8, roughness: 0.9, env: 0.2 }),
         scarlet: pbr(scarlet, { color: 0xb4261a, roughness: 0.75, env: 0.45 }),
@@ -135,6 +226,39 @@ export function loadArtifactMaterials(): Promise<ArtifactMats> {
           env: 1.1,
         }),
         bread: pbr(wood, { color: 0xd4b07a, roughness: 0.92, env: 0.2 }),
+        acacia: pbr(wood, { color: 0xc89060, roughness: 0.82, env: 0.3 }),
+        olive: pbr(wood, { color: 0xb8a070, roughness: 0.78, env: 0.3 }),
+        fir: pbr(wood, { color: 0xe0c49a, roughness: 0.85, env: 0.25 }),
+        pitch: pbr(wood, { color: 0x2a2018, roughness: 0.45, env: 0.6 }),
+        silver: pbr(gold, {
+          color: 0xdfe4ea,
+          metalness: 0.9,
+          roughness: 0.3,
+          env: 1.7,
+        }),
+        goatHair: pbr(linen, { color: 0x3b332c, roughness: 0.95, env: 0.15 }),
+        ramSkin: pbr(scarlet, { color: 0x8a2a1c, roughness: 0.7, env: 0.3 }),
+        tachash: pbr(linen, { color: 0x3a4650, roughness: 0.8, env: 0.25 }),
+        veil: new THREE.MeshStandardMaterial({
+          map: wovenTexture(true),
+          normalMap: linen.nor,
+          roughness: 0.85,
+          envMapIntensity: 0.4,
+          side: THREE.DoubleSide,
+        }),
+        screen: new THREE.MeshStandardMaterial({
+          map: wovenTexture(false),
+          normalMap: linen.nor,
+          roughness: 0.85,
+          envMapIntensity: 0.4,
+          side: THREE.DoubleSide,
+        }),
+        ground: pbr(stone, { color: 0xb8a58a, roughness: 1, env: 0.1 }),
+        hideTan: new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.9 }),
+        hideGrey: new THREE.MeshStandardMaterial({ color: 0x8a8580, roughness: 0.9 }),
+        hideBrown: new THREE.MeshStandardMaterial({ color: 0x5e4030, roughness: 0.9 }),
+        hideWhite: new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.95 }),
+        flame: new THREE.MeshBasicMaterial({ color: 0xffb648 }),
       };
       manager.onLoad = () => resolve(mats);
       manager.onError = (url) => reject(new Error(`texture failed: ${url}`));

@@ -2,16 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 const links = [
   { href: "/", label: "Home" },
   { href: "/genealogy", label: "Genealogy" },
   { href: "/timeline", label: "Timeline" },
+  { href: "/journeys", label: "Journeys" },
   { href: "/artifacts", label: "Models" },
 ];
 
 export function SiteNav() {
   const pathname = usePathname();
+  const linksRef = useRef<HTMLDivElement>(null);
+
+  // on narrow screens the links scroll sideways; keep the current one in view
+  useEffect(() => {
+    const row = linksRef.current;
+    const active = row?.querySelector<HTMLElement>("[aria-current=page]");
+    if (row && active)
+      row.scrollLeft =
+        active.offsetLeft - row.offsetLeft + active.offsetWidth - row.clientWidth;
+  }, [pathname]);
 
   return (
     <header className="fixed top-0 inset-x-0 z-50 border-b border-line bg-background/85 backdrop-blur-md">
@@ -27,7 +39,10 @@ export function SiteNav() {
             תולדות
           </span>
         </Link>
-        <div className="flex items-center gap-4 sm:gap-7">
+        <div
+          ref={linksRef}
+          className="ml-4 flex min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] sm:gap-7"
+        >
           {links.map(({ href, label }) => {
             const active =
               href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -35,7 +50,8 @@ export function SiteNav() {
               <Link
                 key={href}
                 href={href}
-                className={`micro-label transition-colors ${
+                aria-current={active ? "page" : undefined}
+                className={`micro-label shrink-0 transition-colors ${
                   active
                     ? "text-accent"
                     : "text-faint hover:text-foreground"

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { ARTIFACTS, ARTIFACT_ERAS, artifactById, type ArtifactId } from "@/data/artifacts";
+import { BUILDS, BUILD_ORDER } from "@/data/builds";
+import { BuildWorkbench } from "./BuildWorkbench";
 
 const ObjectStage = dynamic(
   () => import("./ObjectStage").then((m) => m.ObjectStage),
@@ -20,14 +22,52 @@ export function ArtifactsView() {
   const params = useSearchParams();
   const fromUrl = params.get("object");
   const [id, setId] = useState<ArtifactId>(
-    isArtifactId(fromUrl) ? fromUrl : "ark",
+    isArtifactId(fromUrl) ? fromUrl : BUILD_ORDER[0],
   );
+  const stepFromUrl = Number(params.get("step"));
   const [mode, setMode] = useState<"orbit" | "place">("orbit");
 
   useEffect(() => {
     if (isArtifactId(fromUrl)) setId(fromUrl);
   }, [fromUrl]);
   const artifact = useMemo(() => artifactById.get(id)!, [id]);
+  const build = BUILDS[id];
+  const pick = (a: ArtifactId) => {
+    setId(a);
+    history.replaceState(null, "", `/artifacts?object=${a}`);
+  };
+
+  if (build) {
+    return (
+      <div className="mx-auto w-full max-w-[1440px] flex-1 px-4 pb-16 pt-24 sm:px-6">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="mb-4 flex items-center gap-3">
+              <span className="hairline w-10" />
+              <span className="micro-label text-faint">Cubit-built · step by step</span>
+            </div>
+            <h1 className="display-tight text-[11vw] text-foreground sm:text-5xl lg:text-6xl">
+              Build it <span className="text-accent">as written.</span>
+            </h1>
+          </div>
+          <p className="max-w-md text-[14px] leading-relaxed text-muted">
+            Each structure goes up part by part in the order the text gives it, with
+            the verse for every step. 1 unit = 1 short cubit. Drag to orbit, scroll to
+            zoom, or flip to the blueprint.
+          </p>
+        </div>
+        <Picker id={id} onPick={pick} />
+        <BuildWorkbench
+          key={id}
+          artifact={artifact}
+          info={build}
+          initialStep={
+            fromUrl === id && stepFromUrl > 0 ? stepFromUrl - 1 : 0
+          }
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-10 px-4 pb-16 pt-24 sm:px-6 lg:flex-row lg:gap-14">
@@ -47,33 +87,7 @@ export function ArtifactsView() {
           here is a walkthrough; they are objects in the page.
         </p>
 
-        <div className="mt-8 space-y-5">
-          {ARTIFACT_ERAS.map((era) => (
-            <div key={era}>
-              <div className="micro-label mb-2 text-faint">{era}</div>
-              <div className="flex flex-wrap gap-2">
-                {ARTIFACTS.filter((a) => a.era === era).map((a) => (
-                  <button
-                    key={a.id}
-                    onClick={() => {
-                      setId(a.id);
-                      history.replaceState(null, "", `/artifacts?object=${a.id}`);
-                    }}
-                    className={`border px-3 py-1.5 text-left transition-colors ${
-                      a.id === id
-                        ? "border-accent bg-accent text-[#f4efe6]"
-                        : "border-line-strong bg-paper text-foreground hover:border-foreground"
-                    }`}
-                  >
-                    <div className="font-display text-sm font-bold tracking-tight">
-                      {a.name}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+        <Picker id={id} onPick={pick} />
 
         <div className="mt-8 border border-line-strong bg-paper px-5 py-4">
           <div className="flex items-baseline justify-between gap-3">
@@ -177,5 +191,70 @@ export function ArtifactsView() {
         </div>
       </div>
     </div>
+  );
+}
+
+function Picker({ id, onPick }: { id: ArtifactId; onPick: (a: ArtifactId) => void }) {
+  return (
+    <div className="mt-8 space-y-4">
+      <div>
+        <div className="micro-label mb-2 text-faint">Step-by-step builds</div>
+        <div className="flex flex-wrap gap-2">
+          {BUILD_ORDER.map((bid) => (
+            <PickButton key={bid} a={bid} on={bid === id} onPick={onPick} build />
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-3">
+        {ARTIFACT_ERAS.map((era) => {
+          const list = ARTIFACTS.filter((a) => a.era === era && !BUILDS[a.id]);
+          if (!list.length) return null;
+          return (
+            <div key={era}>
+              <div className="micro-label mb-2 text-faint">{era}</div>
+              <div className="flex flex-wrap gap-2">
+                {list.map((a) => (
+                  <PickButton key={a.id} a={a.id} on={a.id === id} onPick={onPick} />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PickButton({
+  a,
+  on,
+  onPick,
+  build,
+}: {
+  a: ArtifactId;
+  on: boolean;
+  onPick: (a: ArtifactId) => void;
+  build?: boolean;
+}) {
+  const art = artifactById.get(a)!;
+  return (
+    <button
+      onClick={() => onPick(a)}
+      aria-pressed={on}
+      className={`border text-left transition-colors ${build ? "px-4 py-2" : "px-3 py-1.5"} ${
+        on
+          ? "border-accent bg-accent text-[#f4efe6]"
+          : "border-line-strong bg-paper text-foreground hover:border-foreground"
+      }`}
+    >
+      <div className={`font-display font-bold tracking-tight ${build ? "text-[15px]" : "text-sm"}`}>
+        {art.name}
+      </div>
+      {build && (
+        <div className={`text-[10px] uppercase tracking-wider ${on ? "text-[#f4efe6]/75" : "text-faint"}`}>
+          {BUILDS[a]?.steps.length} steps
+        </div>
+      )}
+    </button>
   );
 }

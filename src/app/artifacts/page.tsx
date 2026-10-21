@@ -5,7 +5,7 @@ import { ArtifactsView } from "@/components/artifacts/ArtifactsView";
 export const metadata: Metadata = {
   title: "Cubit models — Visual Bible",
   description:
-    "Small interactive 3D models built from the measurements in Scripture: both arks, the tabernacle and its furniture, Solomon’s house and sea, Ezekiel’s altar, and the city foursquare.",
+    "Build Solomon’s Temple, Noah’s Ark, the Tabernacle and the Ark of the Covenant step by step in 3D, verse by verse, with blueprints and a temple walk-through — plus cubit-scale models of the other sacred objects.",
 };
 
 export default function ArtifactsPage() {

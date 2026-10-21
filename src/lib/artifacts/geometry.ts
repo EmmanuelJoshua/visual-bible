@@ -1,265 +1,55 @@
 import * as THREE from "three";
 import type { ArtifactId } from "@/data/artifacts";
 import type { ArtifactMats } from "@/lib/artifacts/materials";
-import { tileMaterial } from "@/lib/artifacts/materials";
-
-function box(
-  w: number,
-  h: number,
-  d: number,
-  mat: THREE.Material,
-  x: number,
-  y: number,
-  z: number,
-) {
-  const mesh = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    tileMaterial(mat, w / 2.2, d / 2.2),
-  );
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function cyl(
-  rTop: number,
-  rBot: number,
-  h: number,
-  mat: THREE.Material,
-  x: number,
-  y: number,
-  z: number,
-  segs = 32,
-) {
-  const mesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(rTop, rBot, h, segs),
-    tileMaterial(mat, (Math.PI * (rTop + rBot)) / 2.2, h / 2.2),
-  );
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function horns(
-  g: THREE.Group,
-  half: number,
-  y: number,
-  mat: THREE.Material,
-  size = 0.22,
-) {
-  for (const x of [-half, half]) {
-    for (const z of [-half, half]) {
-      g.add(box(size, size * 1.4, size, mat, x, y, z));
-    }
-  }
-}
+import { arkModel } from "@/lib/artifacts/build/ark";
+import { box, cyl } from "@/lib/artifacts/build/engine";
+import { assembleBuild } from "@/lib/artifacts/build";
+import {
+  bronzeAltar,
+  horns,
+  incenseAltar,
+  showbreadTable,
+} from "@/lib/artifacts/build/parts";
 
 /** Ark: 2½ × 1½ × 1½ cubits, mercy seat, cherubim, poles (Ex 25:10–21). */
 export function buildArk(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = arkModel(m);
   g.name = "ark";
-
-  const L = 2.5;
-  const W = 1.5;
-  const H = 1.5;
-
-  g.add(box(L, H, W, m.gold, 0, H / 2, 0));
-  // crown / molding around the top rim
-  g.add(box(L + 0.12, 0.08, W + 0.12, m.goldDark, 0, H + 0.02, 0));
-  // mercy seat
-  g.add(box(L, 0.08, W, m.gold, 0, H + 0.08, 0));
-
-  const cherub = (side: number) => {
-    const c = new THREE.Group();
-    c.add(box(0.28, 0.7, 0.28, m.gold, 0, 0.35, 0));
-    const wing = (dir: number) => {
-      const w = box(0.08, 0.9, 1.05, m.gold, dir * 0.42, 0.55, 0.15);
-      w.rotation.z = dir * -0.55;
-      w.rotation.x = -0.35;
-      return w;
-    };
-    c.add(wing(-1));
-    c.add(wing(1));
-    c.position.set(side * (L / 2 - 0.28), H + 0.12, 0);
-    c.rotation.y = side * 0.15;
-    return c;
-  };
-  g.add(cherub(-1));
-  g.add(cherub(1));
-
-  // four rings, two per long side
-  const ringGeo = new THREE.TorusGeometry(0.1, 0.03, 12, 24);
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      const ring = new THREE.Mesh(ringGeo, m.goldDark);
-      ring.position.set(sx * (L / 2 - 0.25), 0.35, sz * (W / 2 + 0.08));
-      ring.rotation.y = Math.PI / 2;
-      g.add(ring);
-    }
-  }
-
-  // poles — length not given; ≈4 cubits, interpretive
-  const poleGeo = new THREE.CylinderGeometry(0.06, 0.06, 4, 20);
-  for (const sz of [-1, 1]) {
-    const pole = new THREE.Mesh(poleGeo, m.gold);
-    pole.rotation.z = Math.PI / 2;
-    pole.position.set(0, 0.35, sz * (W / 2 + 0.08));
-    g.add(pole);
-  }
-
   return g;
 }
 
 /** Noah: 300 × 50 × 30, three decks, side door, 1-cubit window (Gen 6:14–16). */
 export function buildNoahsArk(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = assembleBuild("noahs-ark", m).root;
   g.name = "noahs-ark";
-
-  const L = 300;
-  const W = 50;
-  const H = 30;
-  const t = 1.2;
-
-  g.add(box(L, t, W, m.wood, 0, t / 2, 0));
-  g.add(box(L, H, t, m.wood, 0, H / 2, -W / 2));
-  g.add(box(t, H, W, m.wood, -L / 2, H / 2, 0));
-  g.add(box(t, H, W, m.wood, L / 2, H / 2, 0));
-  // roof, leaving a 1-cubit window slot along the ridge
-  g.add(box(L, t, W / 2 - 0.6, m.cedar, 0, H, -W / 4));
-  g.add(box(L, t, W / 2 - 0.6, m.cedar, 0, H, W / 4));
-
-  for (const y of [10, 20]) {
-    g.add(box(L - t * 2, 0.4, W - t, m.cedar, 0, y, -0.4));
-  }
-
-  // door in the side (Gen 6:16), set in the remaining long wall
-  g.add(box(8, 12, 0.5, m.goldDark, -L / 4, 7, -W / 2));
-
   return g;
 }
 
 /** Table of the Presence: 2 × 1 × 1½, gold, twelve cakes (Ex 25:23; Lev 24:5–6). */
 export function buildShowbread(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = showbreadTable(m);
   g.name = "showbread";
-
-  const L = 2;
-  const W = 1;
-  const H = 1.5;
-
-  g.add(box(L, 0.12, W, m.gold, 0, H, 0));
-  g.add(box(L + 0.1, 0.06, W + 0.1, m.goldDark, 0, H + 0.08, 0));
-  for (const x of [-L / 2 + 0.12, L / 2 - 0.12]) {
-    for (const z of [-W / 2 + 0.12, W / 2 - 0.12]) {
-      g.add(cyl(0.07, 0.09, H, m.gold, x, H / 2, z, 8));
-    }
-  }
-
-  const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 3.2, 8);
-  for (const z of [-1, 1]) {
-    const pole = new THREE.Mesh(poleGeo, m.gold);
-    pole.rotation.z = Math.PI / 2;
-    pole.position.set(0, 0.35, z * (W / 2 + 0.08));
-    g.add(pole);
-  }
-
-  // two rows of six — arrangement from Lev 24:6, loaf size interpretive
-  for (let row = 0; row < 2; row++) {
-    for (let i = 0; i < 6; i++) {
-      g.add(
-        box(
-          0.22,
-          0.08,
-          0.28,
-          m.bread,
-          -0.7 + i * 0.28,
-          H + 0.16,
-          row === 0 ? -0.22 : 0.22,
-        ),
-      );
-    }
-  }
-
   return g;
 }
 
 /** Incense altar: 1 × 1 × 2, gold, horns (Ex 30:1–3). */
 export function buildIncenseAltar(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = incenseAltar(m);
   g.name = "incense-altar";
-
-  g.add(box(1, 2, 1, m.gold, 0, 1, 0));
-  g.add(box(1.12, 0.08, 1.12, m.goldDark, 0, 2.02, 0));
-  horns(g, 0.48, 2.18, m.goldDark, 0.16);
-  const poleGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.4, 8);
-  for (const z of [-1, 1]) {
-    const pole = new THREE.Mesh(poleGeo, m.gold);
-    pole.rotation.z = Math.PI / 2;
-    pole.position.set(0, 0.7, z * 0.58);
-    g.add(pole);
-  }
   return g;
 }
 
 /** Court altar: 5 × 5 × 3, bronze, horns, grating (Ex 27:1–4). */
 export function buildBronzeAltar(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = bronzeAltar(m);
   g.name = "bronze-altar";
-
-  g.add(box(5, 3, 0.25, m.bronze, 0, 1.5, -2.4));
-  g.add(box(5, 3, 0.25, m.bronze, 0, 1.5, 2.4));
-  g.add(box(0.25, 3, 5, m.bronze, -2.4, 1.5, 0));
-  g.add(box(0.25, 3, 5, m.bronze, 2.4, 1.5, 0));
-  g.add(box(4.6, 0.15, 4.6, m.bronze, 0, 1.5, 0));
-  for (let i = -2; i <= 2; i++) {
-    g.add(box(0.08, 0.08, 4.4, m.goldDark, i * 0.7, 1.58, 0));
-    g.add(box(4.4, 0.08, 0.08, m.goldDark, 0, 1.58, i * 0.7));
-  }
-  horns(g, 2.35, 3.2, m.bronze, 0.35);
   return g;
 }
 
-/** Court + tent + altar, cutaway on the near long wall (Ex 26–27). */
+/** Court + tent + furniture in the order of Exodus 40, south side cut away. */
 export function buildTabernacle(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = assembleBuild("tabernacle", m).root;
   g.name = "tabernacle";
-
-  const courtL = 100;
-  const courtW = 50;
-  const wallH = 5;
-  const t = 0.25;
-
-  g.add(box(courtL, 0.08, courtW, m.floor, 0, 0.04, 0));
-  // hangings — skip +Z wall for the cutaway
-  g.add(box(courtL, wallH, t, m.linen, 0, wallH / 2, -courtW / 2));
-  g.add(box(t, wallH, courtW, m.linen, -courtL / 2, wallH / 2, 0));
-  g.add(box(t, wallH, courtW, m.linen, courtL / 2, wallH / 2, 0));
-
-  // tent: 30 × 10 × 10, in the western third (toward +X)
-  const tentL = 30;
-  const tentW = 10;
-  const tentH = 10;
-  const tentX = courtL / 2 - 10 - tentL / 2;
-  const boards = m.goldDark;
-  g.add(box(tentL, tentH, t, boards, tentX, tentH / 2, -tentW / 2));
-  g.add(box(t, tentH, tentW, boards, tentX - tentL / 2, tentH / 2, 0));
-  g.add(box(t, tentH, tentW, boards, tentX + tentL / 2, tentH / 2, 0));
-  g.add(box(tentL, t, tentW, m.gold, tentX, tentH, 0));
-
-  // veil at 10 cubits from the west (most holy = 10 cube)
-  const veilX = tentX + tentL / 2 - 10;
-  g.add(box(t, tentH - 0.2, tentW - 0.2, m.scarlet, veilX, tentH / 2, 0));
-
-  const ark = buildArk(m);
-  ark.position.set(tentX + tentL / 2 - 5, 0, 0);
-  g.add(ark);
-
-  // bronze altar in the court, east of the tent
-  const altarX = tentX - tentL / 2 - 12;
-  g.add(box(5, 3, 5, m.bronze, altarX, 1.5, 0));
-
   return g;
 }
 
@@ -288,83 +78,17 @@ export function buildDavidsTent(m: ArtifactMats): THREE.Group {
   g.add(roof(-1));
   g.add(roof(1));
 
-  const ark = buildArk(m);
+  const ark = arkModel(m);
   ark.position.set(0, 0, 0.4);
   g.add(ark);
 
   return g;
 }
 
-/** Solomon's house, cutaway, porch + pillars (1 Kings 6–7). */
+/** Solomon's house, court, pillars, sea and furnishings — south side cut away (1 Kings 6–8). */
 export function buildTemple(m: ArtifactMats): THREE.Group {
-  const g = new THREE.Group();
+  const g = assembleBuild("temple", m).root;
   g.name = "temple";
-
-  const houseL = 60;
-  const houseW = 20;
-  const houseH = 30;
-  const porchL = 10;
-  const inner = 20;
-
-  // floor of house + porch
-  g.add(
-    box(houseL + porchL, 0.2, houseW + 14, m.floor, porchL / 2, 0.1, 0),
-  );
-
-  const houseX = porchL / 2;
-  // back, far side, roof — omit -Z wall (cutaway)
-  g.add(
-    box(0.6, houseH, houseW, m.stone, houseX + houseL / 2, houseH / 2, 0),
-  );
-  g.add(
-    box(houseL, houseH, 0.6, m.stone, houseX, houseH / 2, houseW / 2),
-  );
-  g.add(box(houseL, 0.5, houseW, m.stoneDark, houseX, houseH, 0));
-
-  // inner sanctuary cube at the west end
-  const innerX = houseX + houseL / 2 - inner / 2;
-  g.add(box(0.35, inner, inner - 0.4, m.gold, innerX - inner / 2, inner / 2, 0));
-  g.add(
-    box(inner, inner, 0.35, m.goldDark, innerX, inner / 2, houseW / 2 - 0.3),
-  );
-  g.add(box(inner, 0.35, inner, m.gold, innerX, inner, 0));
-
-  const ark = buildArk(m);
-  ark.position.set(innerX, 0.2, 0);
-  g.add(ark);
-
-  // porch
-  const porchX = -houseL / 2 + houseX - porchL / 2;
-  g.add(box(porchL, 22, 0.5, m.stone, porchX, 11, houseW / 2));
-  g.add(box(porchL, 0.5, houseW, m.stoneDark, porchX, 22, 0));
-  g.add(box(0.5, 22, houseW, m.stone, porchX - porchL / 2, 11, 0));
-
-  // side chambers, three stories (1 Kings 6:6) — near side omitted for cutaway
-  const stories = [
-    { w: 5, y: 2.5 },
-    { w: 6, y: 7.5 },
-    { w: 7, y: 13 },
-  ];
-  for (const s of stories) {
-    g.add(
-      box(houseL - 2, 5, s.w, m.stoneDark, houseX, s.y, houseW / 2 + s.w / 2),
-    );
-  }
-
-  // Jachin & Boaz — 18 cubits high, 12 cubits circumference
-  const r = 12 / (2 * Math.PI);
-  const colGeo = new THREE.CylinderGeometry(r, r, 18, 16);
-  const capGeo = new THREE.CylinderGeometry(r * 1.25, r * 1.25, 5, 16);
-  for (const z of [-6, 6]) {
-    const col = new THREE.Mesh(colGeo, m.bronze);
-    col.position.set(porchX - porchL / 2 - 1.2, 9, z);
-    col.castShadow = true;
-    g.add(col);
-    const cap = new THREE.Mesh(capGeo, m.bronze);
-    cap.position.set(porchX - porchL / 2 - 1.2, 20.5, z);
-    g.add(cap);
-  }
-
   return g;
 }
 
