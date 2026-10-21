@@ -7,6 +7,7 @@ import type { ArtifactId } from "@/data/artifacts";
 import type { BuildInfo } from "@/data/builds";
 import {
   assembleBuild,
+  loadBuildModel,
   showStep,
   tickParts,
   type Assembled,
@@ -378,12 +379,12 @@ export function BuildStage({
     };
     tick();
 
-    void Promise.all([loadArtifactMaterials(), loadStudioEnv(renderer)]).then(
-      ([mats, envMap]) => {
+    void Promise.all([loadArtifactMaterials(), loadStudioEnv(renderer), loadBuildModel(id)]).then(
+      ([mats, envMap, model]) => {
         if (cancelled) return;
         scene.environment = envMap;
         scene.environmentIntensity = env === ENV.sanctuary ? 0.55 : 0.45;
-        asm = assembleBuild(id, mats);
+        asm = assembleBuild(id, mats, model);
         scene.add(asm.root);
 
         const { span, bounds } = asm;

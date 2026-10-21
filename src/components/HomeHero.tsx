@@ -63,22 +63,16 @@ export function HomeHero() {
             className="mt-9 flex flex-wrap items-center gap-3"
           >
             <Link
-              href="/genealogy"
+              href="/explore"
               className="micro-label bg-accent px-7 py-3.5 !text-[11px] text-[#f4efe6] transition-colors hover:bg-accent-bright"
             >
-              Explore the Genealogy&ensp;→
+              Enter the World&ensp;→
             </Link>
             <Link
-              href="/timeline"
+              href="/explore?story=dwelling"
               className="micro-label border border-line-strong px-7 py-3.5 !text-[11px] text-foreground transition-colors hover:border-foreground"
             >
-              Walk the Timeline
-            </Link>
-            <Link
-              href="/artifacts"
-              className="micro-label border border-line-strong px-7 py-3.5 !text-[11px] text-foreground transition-colors hover:border-foreground"
-            >
-              Cubit Models
+              Start the Story
             </Link>
           </motion.div>
 

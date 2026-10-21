@@ -3,7 +3,7 @@ import type { ArtifactId } from "@/data/artifacts";
 import type { ArtifactMats } from "@/lib/artifacts/materials";
 import { arkModel } from "@/lib/artifacts/build/ark";
 import { box, cyl } from "@/lib/artifacts/build/engine";
-import { assembleBuild } from "@/lib/artifacts/build";
+import { assembleBuild, hasBuild, loadBuildModel, loadObjectModel } from "@/lib/artifacts/build";
 import {
   bronzeAltar,
   horns,
@@ -272,6 +272,26 @@ export function buildArtifact(id: ArtifactId, m: ArtifactMats): THREE.Group {
     case "new-jerusalem":
       return buildNewJerusalem(m);
   }
+}
+
+/**
+ * The finished piece for the desk view: its Blender model when there is one
+ * (for the four builds, the build model with every step in place), else the
+ * code-built version.
+ */
+export async function loadArtifactObject(id: ArtifactId, m: ArtifactMats): Promise<THREE.Group> {
+  if (hasBuild(id)) {
+    const model = await loadBuildModel(id);
+    if (model) {
+      const g = assembleBuild(id, m, model).root;
+      g.name = id;
+      return g;
+    }
+  } else {
+    const g = await loadObjectModel(id, m);
+    if (g) return g;
+  }
+  return buildArtifact(id, m);
 }
 
 export function disposeGroup(root: THREE.Object3D) {

@@ -1,29 +1,17 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import type { PaddingOptions } from "maplibre-gl";
-import { eraById } from "@/data/eras";
+import { eraForYear } from "@/data/eras";
 import { JOURNEYS, journeyById } from "@/data/journeys";
+import { useWorldStore } from "@/world/store";
 import { useJourneyStore } from "./store";
 import { approxYear, legSeconds, pathOf, yearAt } from "./geometry";
-import { StopPanel } from "./StopPanel";
-import { TimelineStrip } from "./TimelineStrip";
 
-// WebGL + window access: never prerender the map
-const JourneyMap = dynamic(() => import("./JourneyMap"), {
-  ssr: false,
-  loading: () => (
-    <div className="absolute inset-0 flex items-center justify-center bg-[#07090d]">
-      <span className="micro-label text-white/40">Loading the map…</span>
-    </div>
-  ),
-});
-
-const CHRONO = [...JOURNEYS].sort((a, b) => a.stops[0].year - b.stops[0].year);
+export const CHRONO = [...JOURNEYS].sort((a, b) => a.stops[0].year - b.stops[0].year);
 
 /** advances progress along legs, pausing at each stop, then on to the next journey */
-function usePlayback() {
+export function usePlayback() {
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
@@ -43,11 +31,11 @@ function usePlayback() {
         useJourneyStore.setState(done ? { t: s.target, target: null } : { t });
       } else if (s.playing && !s.cameraBusy) {
         const j = journeyById.get(s.journeyId)!;
-        const end = j.stops.length - 1;
+        const end = Math.min(s.stopAt ?? Infinity, j.stops.length - 1);
         if (dwell > 0) {
           dwell -= dt;
         } else if (s.t >= end) {
-          const next = CHRONO[CHRONO.indexOf(j) + 1];
+          const next = s.autoNext && s.stopAt === null && CHRONO[CHRONO.indexOf(j) + 1];
           if (next) {
             s.select(next.id, 0);
             dwell = 1.6;
@@ -74,7 +62,7 @@ function usePlayback() {
   }, []);
 }
 
-function useReducedMotionPreference() {
+export function useReducedMotionPreference() {
   const setReducedMotion = useJourneyStore((s) => s.setReducedMotion);
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -86,7 +74,7 @@ function useReducedMotionPreference() {
 }
 
 /** ?journey=paul-2 deep links, kept in sync without adding history entries */
-function useJourneyUrl() {
+export function useJourneyUrl() {
   const select = useJourneyStore((s) => s.select);
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("journey");
@@ -103,11 +91,12 @@ function useJourneyUrl() {
   }, [select]);
 }
 
-function useKeyboard() {
+export function useKeyboard() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest("input, textarea, select, [role=slider]") || e.metaKey || e.ctrlKey) return;
+      if (useWorldStore.getState().overlay) return;
       const s = useJourneyStore.getState();
       const end = journeyById.get(s.journeyId)!.stops.length - 1;
       if (e.key === " " && !el.closest("button, a")) {
@@ -128,7 +117,7 @@ function useKeyboard() {
 }
 
 /** keep the camera's focal point clear of the panel and the timeline dock */
-function useMapPadding() {
+export function useMapPadding() {
   const dockRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [padding, setPadding] = useState<PaddingOptions>({ top: 0, bottom: 0, left: 0, right: 0 });
@@ -165,17 +154,15 @@ function PlayIcon({ playing }: { playing: boolean }) {
   );
 }
 
-function Controls() {
+export function Controls() {
   const playing = useJourneyStore((s) => s.playing);
   const setPlaying = useJourneyStore((s) => s.setPlaying);
   const setT = useJourneyStore((s) => s.setT);
   const journeyId = useJourneyStore((s) => s.journeyId);
-  const year = useJourneyStore((s) =>
-    s.focus ? s.focus.year : Math.round(yearAt(journeyById.get(s.journeyId)!, s.t)),
-  );
+  const year = useWorldStore((s) => Math.round(s.year));
   const journey = journeyById.get(journeyId)!;
   const end = journey.stops.length - 1;
-  const era = eraById.get(journey.era);
+  const era = eraForYear(year);
 
   const step = (dir: 1 | -1) => {
     const s = useJourneyStore.getState();
@@ -224,7 +211,7 @@ function Controls() {
   );
 }
 
-function JourneyChips() {
+export function JourneyChips() {
   const journeyId = useJourneyStore((s) => s.journeyId);
   const select = useJourneyStore((s) => s.select);
   const setPlaying = useJourneyStore((s) => s.setPlaying);
@@ -261,7 +248,7 @@ function JourneyChips() {
   );
 }
 
-function JourneyTitle() {
+export function JourneyTitle() {
   const journeyId = useJourneyStore((s) => s.journeyId);
   const journey = journeyById.get(journeyId)!;
   return (
@@ -279,55 +266,16 @@ function JourneyTitle() {
   );
 }
 
-export function JourneysView() {
-  usePlayback();
-  useReducedMotionPreference();
-  useJourneyUrl();
-  useKeyboard();
-  const { dockRef, panelRef, padding } = useMapPadding();
-
-  return (
-    <div className="relative h-[100dvh] w-full overflow-hidden bg-[#07090d] text-white">
-      <div className="absolute inset-x-0 bottom-0 top-14">
-        <JourneyMap padding={padding} />
-      </div>
-
-      {/* top: journey picker + title */}
-      <div className="pointer-events-none absolute inset-x-0 top-14 z-10 bg-gradient-to-b from-black/55 via-black/20 to-transparent pb-10 pt-3">
-        <div className="pointer-events-auto mr-[110px] sm:mr-[60px]">
-          <JourneyChips />
-        </div>
-        <div className="mt-3">
-          <JourneyTitle />
-        </div>
-      </div>
-
-      {/* desktop detail panel */}
-      <div
-        ref={panelRef}
-        className="absolute right-4 top-[120px] z-10 hidden w-[360px] flex-col justify-start lg:flex"
-        style={{ bottom: (padding.bottom ?? 0) + 40 }}
-      >
-        <StopPanel />
-      </div>
-
-      {/* bottom dock: (mobile) stop card + timeline */}
-      <div ref={dockRef} className="absolute inset-x-0 bottom-0 z-20 px-2 pb-2 sm:px-4 sm:pb-4">
-        <div className="mb-2 lg:hidden">
-          <StopPanel compact />
-        </div>
-        <div className="rounded-md border border-white/12 bg-[#0d0b09]/88 px-3 pb-3 pt-3 shadow-2xl backdrop-blur-md sm:px-4">
-          <div className="mb-2.5 flex items-center justify-between gap-4">
-            <Controls />
-            <p className="hidden text-right text-[11px] leading-snug text-white/45 md:block">
-              Drag the route or the ages to travel · click a ◆ event to fly there
-              <br />
-              Space plays · ← → step between stops
-            </p>
-          </div>
-          <TimelineStrip />
-        </div>
-      </div>
-    </div>
-  );
+/** journey playback, steps and focused events move the world's clock */
+export function useWorldClock() {
+  useEffect(() => {
+    const write = (s: ReturnType<typeof useJourneyStore.getState>) =>
+      useWorldStore
+        .getState()
+        .setYear(s.focus ? s.focus.year : yearAt(journeyById.get(s.journeyId)!, s.t));
+    write(useJourneyStore.getState());
+    return useJourneyStore.subscribe((s, prev) => {
+      if (s.t !== prev.t || s.journeyId !== prev.journeyId || s.focus !== prev.focus) write(s);
+    });
+  }, []);
 }

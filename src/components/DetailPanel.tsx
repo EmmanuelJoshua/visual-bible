@@ -47,7 +47,12 @@ function RelativeGroup({
   );
 }
 
-export function DetailPanel() {
+export function DetailPanel({
+  onShowYear,
+}: {
+  /** when set (inside the world), the footer moves the world's clock instead of linking out */
+  onShowYear?: (year: number) => void;
+} = {}) {
   const selected = useExplorerStore((s) => s.selected);
   const select = useExplorerStore((s) => s.select);
   const [loaded, setLoaded] = useState<Person | null>(null);
@@ -195,12 +200,22 @@ export function DetailPanel() {
           </div>
 
           <div className="border-t border-line p-3">
-            <Link
-              href={`/timeline?year=${person.birthYear ?? person.minYear}`}
-              className="micro-label block w-full bg-accent px-4 py-2.5 text-center !text-[11px] text-[#f4efe6] transition-colors hover:bg-accent-bright"
-            >
-              View this era on the timeline&ensp;→
-            </Link>
+            {onShowYear ? (
+              <button
+                type="button"
+                onClick={() => onShowYear(person.birthYear ?? person.minYear)}
+                className="micro-label block w-full bg-accent px-4 py-2.5 text-center !text-[11px] text-[#f4efe6] transition-colors hover:bg-accent-bright"
+              >
+                See their world on the map&ensp;→
+              </button>
+            ) : (
+              <Link
+                href={`/timeline?year=${person.birthYear ?? person.minYear}`}
+                className="micro-label block w-full bg-accent px-4 py-2.5 text-center !text-[11px] text-[#f4efe6] transition-colors hover:bg-accent-bright"
+              >
+                View this era on the timeline&ensp;→
+              </Link>
+            )}
           </div>
         </motion.aside>
       )}

@@ -57,6 +57,30 @@ function layer(k: Kit, key: MatKey, o: number, bottom: number) {
   k.box(key, [0.06, h, 2 * zEdge], [x1, bottom + h / 2, 0], drop);
 }
 
+/**
+ * What a step needs beyond its solid parts — lamplight, smoke, fire — kept in
+ * code when the parts come from the Blender model.
+ */
+export const TABERNACLE_FX: Partial<Record<TabernacleStepId, StepFn>> = {
+  lampstand(k) {
+    const halo = glow(0xffb050, 2.6, 0.6);
+    halo.position.set(20, 3.2, -2.5);
+    k.add(halo, { anim: { kind: "fade" }, tally: null, frame: false });
+    k.light(new THREE.PointLight(0xffb45a, 40, 24, 2), [20, 3.6, -2.5]);
+  },
+  incense(k) {
+    const smoke = glow(0xf4efe6, 1.8, 0.45, false);
+    smoke.position.set(28, 2.9, 0);
+    k.add(smoke, { anim: { kind: "fade" }, tally: null });
+  },
+  altar(k) {
+    const f = fire(k.m, 3.4, 3.4, 0.8);
+    f.position.set(TB.altarX, 1.6, 0);
+    k.add(f, { anim: { kind: "pop" }, tally: null });
+    k.light(new THREE.PointLight(0xff8a3a, 45, 30, 2), [TB.altarX, 4.5, 0]);
+  },
+};
+
 export const TABERNACLE_GEOMETRY: Record<TabernacleStepId, StepFn> = {
   sockets(k) {
     const geo = new THREE.BoxGeometry(0.7, sock, 0.7);
@@ -159,20 +183,15 @@ export const TABERNACLE_GEOMETRY: Record<TabernacleStepId, StepFn> = {
   },
   lampstand(k) {
     const l = lampstand(k.m, 3);
-    const halo = glow(0xffb050, 2.6, 0.6);
-    halo.position.y = 3.2;
-    l.add(halo);
     l.position.set(20, 0, -2.5);
     k.add(l, { anim: { kind: "pop" } });
-    k.light(new THREE.PointLight(0xffb45a, 40, 24, 2), [20, 3.6, -2.5]);
+    TABERNACLE_FX.lampstand!(k);
   },
   incense(k) {
     const a = incenseAltar(k.m);
     a.position.set(28, 0, 0);
     k.add(a, { anim: { kind: "pop" } });
-    const smoke = glow(0xf4efe6, 1.8, 0.45, false);
-    smoke.position.set(28, 2.9, 0);
-    k.add(smoke, { anim: { kind: "fade" }, tally: null });
+    TABERNACLE_FX.incense!(k);
   },
   door(k) {
     k.box("screen", [0.08, boardH, 2 * tz], [tent.x0 - 0.3, sock + boardH / 2, 0], {
@@ -183,10 +202,7 @@ export const TABERNACLE_GEOMETRY: Record<TabernacleStepId, StepFn> = {
     const a = bronzeAltar(k.m);
     a.position.set(TB.altarX, 0, 0);
     k.add(a);
-    const f = fire(k.m, 3.4, 3.4, 0.8);
-    f.position.set(TB.altarX, 1.6, 0);
-    k.add(f, { anim: { kind: "pop" }, tally: null });
-    k.light(new THREE.PointLight(0xff8a3a, 45, 30, 2), [TB.altarX, 4.5, 0]);
+    TABERNACLE_FX.altar!(k);
   },
   laver(k) {
     const g = new THREE.Group();

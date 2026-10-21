@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { allEvents, getPersonSync, loadAllPeople } from "@/data";
 import { journeyById } from "@/data/journeys";
+import { showPerson } from "@/world/actions";
 import { useJourneyStore } from "./store";
 import { focusFor } from "./TimelineStrip";
 import { approxYear } from "./geometry";
@@ -35,14 +35,14 @@ function PeopleLinks({ slugs }: { slugs: string[] }) {
       {slugs.map((slug) => {
         const p = getPersonSync(slug);
         return (
-          <Link
+          <button
             key={slug}
-            href={`/genealogy?person=${slug}`}
+            type="button"
+            onClick={() => showPerson(slug)}
             className="rounded-full border border-white/20 px-2.5 py-1 text-[11.5px] font-medium text-white/85 transition-colors hover:border-[#d9b45a] hover:text-white"
           >
             {p?.name ?? nameFromSlug(slug)}
-            <span className="ml-1 text-white/40">↗</span>
-          </Link>
+          </button>
         );
       })}
     </div>

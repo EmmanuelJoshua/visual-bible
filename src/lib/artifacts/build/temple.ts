@@ -64,6 +64,32 @@ function laverCart(m: ArtifactMats, bowl: THREE.BufferGeometry): THREE.Group {
 
 const v2 = (pts: [number, number][]) => pts.map(([x, y]) => new THREE.Vector2(x, y));
 
+/**
+ * What a step needs beyond its solid parts — fire, light — kept in code when
+ * the parts come from the Blender model.
+ */
+const LAMP_XS = [-24, -18, -12, -6, 0];
+
+export const TEMPLE_FX: Partial<Record<TempleStepId, StepFn>> = {
+  furnishings(k) {
+    for (const x of LAMP_XS) {
+      for (const z of [-7, 7]) {
+        const halo = glow(0xffb050, 2.6, 0.55);
+        halo.position.set(x, F + 3.4, z);
+        k.add(halo, { anim: { kind: "fade" }, tally: null, frame: false });
+      }
+    }
+    for (const z of [-7, 7]) k.light(new THREE.PointLight(0xffb45a, 140, 45, 2), [-12, F + 6, z * 0.8]);
+  },
+  altar(k) {
+    const { x, z } = altar;
+    const f = fire(k.m, 14, 14, 2.2);
+    f.position.set(x, 10.1, z);
+    k.add(f, { anim: { kind: "pop" }, tally: null });
+    k.light(new THREE.PointLight(0xff8a3a, 260, 70, 2), [x, 14, z]);
+  },
+};
+
 export const TEMPLE_GEOMETRY: Record<TempleStepId, StepFn> = {
   foundation(k) {
     const x0 = -49;
@@ -261,26 +287,17 @@ export const TEMPLE_GEOMETRY: Record<TempleStepId, StepFn> = {
         });
       }
     }
-    const f = fire(k.m, 14, 14, 2.2);
-    f.position.set(x, 10.1, z);
-    k.add(f, { anim: { kind: "pop" }, tally: null });
-    k.light(new THREE.PointLight(0xff8a3a, 260, 70, 2), [x, 14, z]);
+    TEMPLE_FX.altar!(k);
   },
   furnishings(k) {
-    const xs = [-24, -18, -12, -6, 0];
-    xs.forEach((x, i) => {
+    for (const x of LAMP_XS) {
       for (const z of [-7, 7]) {
         const l = lampstand(k.m, 3);
-        const halo = glow(0xffb050, 2.6, 0.55);
-        halo.position.y = 3.2;
-        l.add(halo);
         l.position.set(x, F + 0.2, z);
         k.add(l, { anim: { kind: "pop" } });
-        if (i === 0) {
-          k.light(new THREE.PointLight(0xffb45a, 140, 45, 2), [-12, F + 6, z * 0.8]);
-        }
       }
-    });
+    }
+    TEMPLE_FX.furnishings!(k);
     const tb = showbreadTable(k.m);
     tb.position.set(-12, F + 0.2, 0);
     k.add(tb, { anim: { kind: "pop" } });

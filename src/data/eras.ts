@@ -129,3 +129,8 @@ export const ERAS: Era[] = [
 ];
 
 export const eraById = new Map(ERAS.map((e) => [e.id, e]));
+
+/** the era a year falls in (clamped to the first and last) */
+export function eraForYear(year: number): Era {
+  return ERAS.find((e) => year <= e.endYear) ?? ERAS[ERAS.length - 1];
+}

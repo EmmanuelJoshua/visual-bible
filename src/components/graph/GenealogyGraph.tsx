@@ -193,7 +193,14 @@ function GraphInner() {
 
   /* ----- initial camera: begin the story at Adam ----- */
   const handleInit = useCallback(() => {
-    if (useExplorerStore.getState().selected) return;
+    // opened on someone (a deep link, or from the map): start on them
+    const selected = useExplorerStore.getState().selected;
+    const start = selected && layout.nodes.find((n) => n.person.slug === selected);
+    if (start) {
+      setCenter(start.x + NODE_WIDTH / 2, start.y + NODE_HEIGHT / 2, { zoom: 1.1, duration: 0 });
+      return;
+    }
+    if (selected) return;
     const adam = layout.nodes.find((n) => n.person.slug === "adam_78");
     if (adam) {
       setCenter(adam.x + NODE_WIDTH / 2, adam.y + 260, { zoom: 0.7, duration: 0 });

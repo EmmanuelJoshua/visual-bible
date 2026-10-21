@@ -4,12 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
+/** the explorer is the experience; the rest are its full-page views */
 const links = [
   { href: "/", label: "Home" },
-  { href: "/genealogy", label: "Genealogy" },
+  { href: "/explore", label: "Explore", match: ["/explore", "/journeys"] },
+  { href: "/explore?story=dwelling", label: "Story" },
+  { href: "/genealogy", label: "Family tree" },
   { href: "/timeline", label: "Timeline" },
-  { href: "/journeys", label: "Journeys" },
-  { href: "/artifacts", label: "Models" },
+  { href: "/artifacts", label: "Builds" },
 ];
 
 export function SiteNav() {
@@ -43,9 +45,13 @@ export function SiteNav() {
           ref={linksRef}
           className="ml-4 flex min-w-0 items-center gap-4 overflow-x-auto [scrollbar-width:none] sm:gap-7"
         >
-          {links.map(({ href, label }) => {
+          {links.map(({ href, label, match }) => {
             const active =
-              href === "/" ? pathname === "/" : pathname.startsWith(href);
+              href === "/"
+                ? pathname === "/"
+                : href.includes("?")
+                  ? false
+                  : (match ?? [href]).some((m) => pathname.startsWith(m));
             return (
               <Link
                 key={href}

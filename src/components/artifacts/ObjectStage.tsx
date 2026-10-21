@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import type { ArtifactId } from "@/data/artifacts";
-import { buildArtifact, disposeGroup } from "@/lib/artifacts/geometry";
+import { disposeGroup, loadArtifactObject } from "@/lib/artifacts/geometry";
 import {
   loadArtifactMaterials,
   loadStudioEnv,
@@ -161,12 +161,13 @@ export function ObjectStage({
     };
     tick();
 
-    void Promise.all([loadArtifactMaterials(), loadStudioEnv(renderer)]).then(
-      ([mats, env]) => {
+    void Promise.all([loadArtifactMaterials(), loadStudioEnv(renderer)])
+      .then(async ([mats, env]) => [await loadArtifactObject(artifactId, mats), env] as const)
+      .then(([loaded, env]) => {
         if (cancelled) return;
         scene.environment = env;
 
-        model = buildArtifact(artifactId, mats);
+        model = loaded;
         pivot.add(model);
 
         const box = new THREE.Box3().setFromObject(model);

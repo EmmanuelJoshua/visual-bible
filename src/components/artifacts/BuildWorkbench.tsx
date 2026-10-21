@@ -20,10 +20,13 @@ export function BuildWorkbench({
   artifact,
   info,
   initialStep = 0,
+  syncUrl = true,
 }: {
   artifact: Artifact;
   info: BuildInfo;
   initialStep?: number;
+  /** mirror the structure and step into ?object=&step= (off when embedded) */
+  syncUrl?: boolean;
 }) {
   const steps = info.steps;
   const last = steps.length - 1;
@@ -47,11 +50,12 @@ export function BuildWorkbench({
   );
 
   useEffect(() => {
+    if (!syncUrl) return;
     const url = new URL(window.location.href);
     url.searchParams.set("object", artifact.id);
     url.searchParams.set("step", String(step + 1));
     history.replaceState(null, "", url);
-  }, [artifact.id, step]);
+  }, [artifact.id, step, syncUrl]);
 
   // auto-advance
   useEffect(() => {

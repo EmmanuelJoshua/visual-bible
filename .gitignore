@@ -45,3 +45,7 @@ data/raw/
 
 # local screenshots from scripts/shot.mjs
 .shots/
+
+# raw Blender exports (compressed copies live in public/models)
+/blender/out/
+__pycache__/

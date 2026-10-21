@@ -14,6 +14,7 @@ import {
   type StyleSpecification,
 } from "maplibre-gl";
 import { JOURNEYS, journeyById, type Journey, type LngLat } from "@/data/journeys";
+import { useWorldStore, type CameraCommand } from "@/world/store";
 import { useJourneyStore } from "./store";
 import {
   approxYear,
@@ -155,13 +156,23 @@ function placesOf(j: Journey) {
   return [...byKey.values()];
 }
 
-type Props = { padding: PaddingOptions };
+type Props = {
+  padding: PaddingOptions;
+  /** hands the loaded map to the world's other layers */
+  onMap?: (map: MapLibreMap | null) => void;
+};
 
-export default function JourneyMap({ padding }: Props) {
+export default function JourneyMap({ padding, onMap }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const [ready, setReady] = useState(false);
   const paddingRef = useRef(padding);
+  const onMapRef = useRef(onMap);
+  /** the last world camera request flown, so a remount doesn't replay it */
+  const cameraNonce = useRef(0);
+  useEffect(() => {
+    onMapRef.current = onMap;
+  }, [onMap]);
 
   const journeyId = useJourneyStore((s) => s.journeyId);
   const focus = useJourneyStore((s) => s.focus);
@@ -271,8 +282,10 @@ export default function JourneyMap({ padding }: Props) {
       map.on("mouseenter", "all-routes-hit", () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", "all-routes-hit", () => (map.getCanvas().style.cursor = ""));
       setReady(true);
+      onMapRef.current?.(map);
     });
     return () => {
+      onMapRef.current?.(null);
       map.remove();
       mapRef.current = null;
     };
@@ -368,8 +381,21 @@ export default function JourneyMap({ padding }: Props) {
       else if ((prev.focus && !s.focus) || s.flight !== prev.flight) sync(false, true);
       else if (s.t !== prev.t) sync(false);
     });
+    // people, structures and story scenes ask for the camera through the world
+    const flyToCommand = (c: CameraCommand) => {
+      cameraNonce.current = c.nonce;
+      const { center, zoom, pitch = 55, bearing = 0 } = c;
+      flyTo({ center, zoom, pitch, bearing }, store.getState().reducedMotion);
+    };
+    // a request made before the map loaded (a story opening on a scene)
+    const pending = useWorldStore.getState().camera;
+    if (pending && pending.nonce !== cameraNonce.current) flyToCommand(pending);
+    const unsubWorld = useWorldStore.subscribe((w, prev) => {
+      if (w.camera && w.camera !== prev.camera) flyToCommand(w.camera);
+    });
     return () => {
       unsub();
+      unsubWorld();
       map.off("movestart", onMoveStart);
       traveller.remove();
     };

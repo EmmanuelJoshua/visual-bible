@@ -6,8 +6,9 @@ import { ERAS } from "@/data/eras";
 import { JOURNEYS, journeyById, journeySpan, type Journey } from "@/data/journeys";
 import type { BibleEvent } from "@/data/types";
 import eventPlaces from "./event-places.json";
+import { useWorldStore } from "@/world/store";
 import { useJourneyStore, type FocusEvent } from "./store";
-import { approxYear, fracToYear, tForYear, yearAt, yearToFrac } from "./geometry";
+import { approxYear, fracToYear, tForYear, yearToFrac } from "./geometry";
 
 const PLACES = eventPlaces as unknown as Record<string, [number, number, string]>;
 
@@ -31,7 +32,7 @@ export function focusFor(e: BibleEvent): FocusEvent | null {
 }
 
 /** journey whose span holds the year (current one wins), else the nearest */
-function journeyForYear(year: number, currentId: string): Journey {
+export function journeyForYear(year: number, currentId: string): Journey {
   const dist = (j: Journey) => {
     const [a, b] = journeySpan(j);
     return year < a ? a - year : year > b ? year - b : 0;
@@ -57,10 +58,7 @@ const LANES = (() => {
 })();
 
 function Playhead() {
-  const frac = useJourneyStore((s) => {
-    if (s.focus) return yearToFrac(s.focus.year);
-    return yearToFrac(yearAt(journeyById.get(s.journeyId)!, s.t));
-  });
+  const frac = useWorldStore((s) => yearToFrac(s.year));
   return (
     <div
       className="pointer-events-none absolute inset-y-0 z-10 w-0"
@@ -165,6 +163,8 @@ export function TimelineStrip() {
     const t = tForYear(j, year);
     if (j.id !== s.journeyId) select(j.id, t);
     else setT(t);
+    // the ages run on past a journey's ends; the world keeps the scrubbed year
+    useWorldStore.getState().setYear(year);
   };
 
   return (
