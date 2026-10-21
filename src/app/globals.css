@@ -1,0 +1,155 @@
+@import "tailwindcss";
+
+/*
+ * KAIRO-style editorial print theme:
+ * cream paper, warm ink, brick-red accent, hairline rules.
+ */
+:root {
+  --background: #f4efe6;
+  --surface: #efe9dc;
+  --surface-raised: #fffcf6;
+  --line: rgba(20, 18, 16, 0.14);
+  --line-strong: rgba(20, 18, 16, 0.4);
+  --foreground: #141210;
+  --muted: #7a6f66;
+  --faint: rgba(20, 18, 16, 0.45);
+  --accent: #b4261a;
+  --accent-bright: #c8392a;
+  --accent-dim: rgba(180, 38, 26, 0.55);
+  --paper: #fffcf6;
+}
+
+/* ink-black section scope */
+.theme-ink {
+  --background: #141210;
+  --surface: #1c1815;
+  --surface-raised: #232019;
+  --line: rgba(244, 239, 230, 0.16);
+  --line-strong: rgba(244, 239, 230, 0.4);
+  --foreground: #f4efe6;
+  --muted: rgba(244, 239, 230, 0.62);
+  --faint: rgba(244, 239, 230, 0.4);
+  --accent: #c8392a;
+  --accent-bright: #e05242;
+  --accent-dim: rgba(200, 57, 42, 0.6);
+  --paper: #1c1815;
+  background: #141210;
+  color: #f4efe6;
+}
+
+/* full-red section scope */
+.theme-red {
+  --background: #b4261a;
+  --surface: #a82217;
+  --surface-raised: #c02b1e;
+  --line: rgba(244, 239, 230, 0.28);
+  --line-strong: rgba(244, 239, 230, 0.55);
+  --foreground: #f4efe6;
+  --muted: rgba(244, 239, 230, 0.75);
+  --faint: rgba(244, 239, 230, 0.5);
+  --accent: #f4efe6;
+  --accent-bright: #fffcf6;
+  --accent-dim: rgba(244, 239, 230, 0.6);
+  --paper: #b4261a;
+  background: #b4261a;
+  color: #f4efe6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-raised: var(--surface-raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-accent: var(--accent);
+  --color-accent-bright: var(--accent-bright);
+  --color-accent-dim: var(--accent-dim);
+  --color-paper: var(--paper);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(180, 38, 26, 0.85);
+  color: #f4efe6;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(20, 18, 16, 0.3) transparent;
+}
+
+.font-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+}
+
+/* colossal KAIRO-style headline */
+.display-tight {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.92;
+  text-transform: uppercase;
+}
+
+/* tiny letterspaced micro-label */
+.micro-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* outlined display text (dark sections) */
+.text-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px var(--line-strong);
+}
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+  }
+}
+
+/* hairline rule */
+.hairline {
+  height: 1px;
+  background: var(--line-strong);
+}
+
+/* React Flow overrides to match the theme */
+.react-flow__attribution {
+  background: transparent !important;
+  color: var(--faint) !important;
+}
+.react-flow__controls {
+  box-shadow: none !important;
+  border: 1px solid var(--line-strong);
+}
+.react-flow__controls-button {
+  background: var(--paper) !important;
+  border-bottom: 1px solid var(--line) !important;
+  fill: var(--foreground) !important;
+}
+.react-flow__controls-button:hover {
+  background: var(--surface) !important;
+}
+.react-flow__minimap {
+  background: var(--surface) !important;
+  border: 1px solid var(--line-strong);
+}
