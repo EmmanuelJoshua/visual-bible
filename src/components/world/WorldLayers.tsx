@@ -11,6 +11,7 @@ import { useJourneyStore } from "@/components/journeys/store";
 import { focusFor } from "@/components/journeys/TimelineStrip";
 import { presenceAt, type Presence } from "@/world/presence";
 import { structuresAt, type StructureAt } from "@/world/structures";
+import { enlargement, MODELS_MIN_ZOOM, StructureModelLayer } from "./modelLayer";
 import { showPerson, showStructure } from "@/world/actions";
 import { useWorldStore } from "@/world/store";
 import styles from "./world.module.css";
@@ -177,8 +178,10 @@ function StructureGlyph({ id }: { id: ArtifactId }) {
 
 function StructuresLayer({ map }: { map: MapLibreMap }) {
   const year = useWholeYear();
+  const zoom = useZoom(map);
+  const modelsShown = zoom >= MODELS_MIN_ZOOM;
   const selected = useWorldStore((s) => (s.selection?.kind === "structure" ? s.selection.id : null));
-  const standing = structuresAt(year);
+  const standing = standingOnMap(year);
   const signature = standing.map((s) => `${s.placement.id}@${s.site.place}`).join("|");
   const items = useMemo(
     () => standing.map((s) => ({ ...s, el: document.createElement("div") })),
@@ -194,20 +197,23 @@ function StructuresLayer({ map }: { map: MapLibreMap }) {
       const key = keyOf(s.site.coord);
       const nth = seen.get(key) ?? 0;
       seen.set(key, nth + 1);
-      return new Marker({ element: s.el, anchor: "top", offset: [0, 16 + nth * 74] })
+      // with the 3D model drawn at the site, the label sits below it
+      const below = modelsShown ? 95 : 16;
+      return new Marker({ element: s.el, anchor: "top", offset: [0, below + nth * 74] })
         .setLngLat(s.site.coord)
         .addTo(map);
     });
     return () => markers.forEach((m) => m.remove());
-  }, [map, items]);
+  }, [map, items, modelsShown]);
 
   return (
     <>
       {items.map((s) => {
         // progress changes every year; read it fresh rather than from the memo
         const now = standing.find((x) => x.placement.id === s.placement.id) ?? s;
+        const k = modelsShown ? enlargement(SPANS[s.placement.id] ?? 50, s.site.coord[1], zoom) : 1;
         return createPortal(
-          <StructureMarker at={now} on={selected === s.placement.id} />,
+          <StructureMarker at={now} on={selected === s.placement.id} near={modelsShown} enlarged={k} />,
           s.el,
           s.placement.id,
         );
@@ -216,9 +222,29 @@ function StructuresLayer({ map }: { map: MapLibreMap }) {
   );
 }
 
-function StructureMarker({ at, on }: { at: StructureAt; on: boolean }) {
+/** rough footprints in cubits, for the "drawn larger" note under each model */
+const SPANS: Partial<Record<ArtifactId, number>> = {
+  temple: 160,
+  tabernacle: 100,
+  "noahs-ark": 300,
+  ark: 4,
+};
+
+function StructureMarker({
+  at,
+  on,
+  near,
+  enlarged,
+}: {
+  at: StructureAt;
+  on: boolean;
+  /** the 3D model is drawn at the site: just the label */
+  near: boolean;
+  enlarged: number;
+}) {
   const art = artifactById.get(at.placement.id)!;
   const building = at.site.building && at.progress < 1;
+  const scaleNote = near && enlarged > 1.5 ? ` · drawn ×${Math.round(enlarged)}` : "";
   return (
     <button
       type="button"
@@ -229,13 +255,16 @@ function StructureMarker({ at, on }: { at: StructureAt; on: boolean }) {
       }}
       aria-label={`${art.name} at ${at.site.place}`}
     >
-      <span className={styles.structurePin}>
-        <StructureGlyph id={at.placement.id} />
-      </span>
+      {!near && (
+        <span className={styles.structurePin}>
+          <StructureGlyph id={at.placement.id} />
+        </span>
+      )}
       <span className={styles.structureName}>
         {art.name}
         <span className={styles.structureSub}>
           {building ? `Being built · ${Math.round(at.progress * 100)}%` : at.site.place}
+          {scaleNote}
         </span>
         {building && (
           <span className={styles.progress}>
@@ -245,6 +274,52 @@ function StructureMarker({ at, on }: { at: StructureAt; on: boolean }) {
       </span>
     </button>
   );
+}
+
+/* ------------------------------ 3D structures ----------------------------- */
+
+/**
+ * What stands this year, less the ark wherever it rests inside the tabernacle
+ * or the temple: it is drawn (and found) inside them there.
+ */
+function standingOnMap(year: number) {
+  const standing = structuresAt(year);
+  const homes = new Set(standing.filter((s) => s.placement.id !== "ark").map((s) => keyOf(s.site.coord)));
+  return standing.filter((s) => !(s.placement.id === "ark" && homes.has(keyOf(s.site.coord))));
+}
+
+/** the builds' 3D models, standing at their sites in the year */
+function StructureModels({ map }: { map: MapLibreMap }) {
+  const year = useWholeYear();
+  const [layer] = useState(() => new StructureModelLayer());
+
+  useEffect(() => {
+    map.addLayer(layer);
+    return () => {
+      if (map.getStyle() && map.getLayer(layer.id)) map.removeLayer(layer.id);
+    };
+  }, [map, layer]);
+
+  useEffect(() => {
+    layer.setStructures(
+      standingOnMap(year).map((s) => ({ id: s.placement.id, coord: s.site.coord, progress: s.progress })),
+    );
+  }, [layer, year]);
+
+  return null;
+}
+
+/** the map's zoom, quantised, for things drawn differently up close */
+function useZoom(map: MapLibreMap) {
+  const [zoom, setZoom] = useState(() => map.getZoom());
+  useEffect(() => {
+    const on = () => setZoom(Math.round(map.getZoom() * 4) / 4);
+    map.on("zoom", on);
+    return () => {
+      map.off("zoom", on);
+    };
+  }, [map]);
+  return zoom;
 }
 
 /* --------------------------------- events --------------------------------- */
@@ -334,6 +409,7 @@ export function WorldLayers({ map }: { map: MapLibreMap }) {
       {layers.events && <EventsLayer map={map} />}
       {layers.people && <PeopleLayer map={map} />}
       {layers.structures && <StructuresLayer map={map} />}
+      {layers.structures && <StructureModels map={map} />}
     </>
   );
 }

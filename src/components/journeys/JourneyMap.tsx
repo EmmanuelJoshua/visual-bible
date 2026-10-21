@@ -293,7 +293,18 @@ export default function JourneyMap({ padding, onMap }: Props) {
 
   useEffect(() => {
     paddingRef.current = padding;
-    mapRef.current?.setPadding(padding);
+    const map = mapRef.current;
+    if (!map) return;
+    // setPadding is a jump: it would cancel a flight the panel opening just started
+    if (!map.isMoving()) {
+      map.setPadding(padding);
+      return;
+    }
+    const apply = () => map.setPadding(paddingRef.current);
+    map.once("moveend", apply);
+    return () => {
+      map.off("moveend", apply);
+    };
   }, [padding]);
 
   /* ---------------------- camera, route and marker sync -------------------- */

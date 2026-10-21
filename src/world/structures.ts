@@ -22,7 +22,7 @@ export type StructureSite = {
 
 export type StructurePlacement = {
   id: ArtifactId;
-  /** zoom the camera settles at when flying to it */
+  /** zoom the camera settles at when flying to it — close enough that the 3D model is near true size */
   zoom: number;
   sites: StructureSite[];
 };
@@ -30,7 +30,7 @@ export type StructurePlacement = {
 export const STRUCTURES: StructurePlacement[] = [
   {
     id: "noahs-ark",
-    zoom: 9,
+    zoom: 12.5,
     sites: [
       {
         place: "Mesopotamia",
@@ -54,7 +54,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "tabernacle",
-    zoom: 11,
+    zoom: 14.5,
     sites: [
       {
         place: "Mount Sinai",
@@ -104,7 +104,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "ark",
-    zoom: 12,
+    zoom: 16,
     sites: [
       {
         place: "Mount Sinai",
@@ -152,7 +152,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "temple",
-    zoom: 14.5,
+    zoom: 15.5,
     sites: [
       {
         place: "Mount Moriah",

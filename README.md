@@ -10,7 +10,11 @@ four millennia of biblical events.
   A 3D terrain map of the biblical world driven by the ages along the
   bottom. As the clock moves, the journeys, the people standing where the
   text puts them, nearby events, and the structures standing (or going up)
-  in that year appear on the map. A person opens their family tree over the
+  in that year appear on the map — the builds' 3D models standing on the
+  terrain at their sites (the temple on Moriah, the tabernacle at Shiloh, the
+  ark on Ararat), rising step by step through the years they were built, and
+  drawn larger than life when zoomed out, with a note saying so. A person
+  opens their family tree over the
   map; a structure opens its step-by-step build at the step reached that
   year. **Story mode** (`/explore?story=dwelling`) is a narrated path
   through the same world, built from scenes in `src/story/` — pause it
