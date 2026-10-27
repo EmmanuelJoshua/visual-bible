@@ -149,9 +149,12 @@ class Part:
     single mesh. Primitives are placed in app coordinates.
     """
 
-    def __init__(self, name, anim="drop", hero=False, tally=None, uv="world"):
+    def __init__(self, name, anim="drop", hero=False, tally=None, uv="world", view=None):
         self.name = name
         self.props = {"anim": anim}
+        # "build": only in the step-by-step view (cut-aways); "map": only on the relief
+        if view:
+            self.props["view"] = view
         if hero:
             self.props["hero"] = True
         if tally is not None:

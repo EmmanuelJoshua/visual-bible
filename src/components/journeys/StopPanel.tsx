@@ -5,6 +5,7 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { allEvents, getPersonSync, loadAllPeople } from "@/data";
 import { journeyById } from "@/data/journeys";
 import { showPerson } from "@/world/actions";
+import { useWorldStore } from "@/world/store";
 import { useJourneyStore } from "./store";
 import { focusFor } from "./TimelineStrip";
 import { approxYear } from "./geometry";
@@ -57,7 +58,6 @@ export function StopPanel({ compact = false }: { compact?: boolean }) {
   const goTo = useJourneyStore((s) => s.goTo);
   const setFocus = useJourneyStore((s) => s.setFocus);
   const reduceMotion = useReducedMotion();
-  const [open, setOpen] = useState(false);
 
   const journey = journeyById.get(journeyId)!;
   const stop = journey.stops[stopIndex];
@@ -74,7 +74,8 @@ export function StopPanel({ compact = false }: { compact?: boolean }) {
   const people = focusEvent
     ? (focusEvent.participants ?? []).filter((p) => !/^(god|holy_spirit)(_|$)/.test(p))
     : (stop.people ?? journey.people);
-  const showDetail = !compact || open;
+  // it opens only when asked for, so it opens in full
+  const showDetail = true;
   const key = focus ? `event-${focus.id}` : `${journey.id}-${stopIndex}`;
 
   return (
@@ -128,16 +129,16 @@ export function StopPanel({ compact = false }: { compact?: boolean }) {
                 <div className="micro-label" style={{ color: GOLD }}>
                   Stop {stopIndex + 1} of {last + 1} · {approxYear(stop.year)}
                 </div>
-                {compact && (
-                  <button
-                    type="button"
-                    onClick={() => setOpen((o) => !o)}
-                    className="micro-label shrink-0 text-white/60 hover:text-white"
-                    aria-expanded={open}
-                  >
-                    {open ? "Less" : "More"}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => useWorldStore.getState().setDetails(false)}
+                  className="-mr-1 -mt-1 shrink-0 p-1.5 text-white/50 transition-colors hover:text-white"
+                  aria-label="Close"
+                >
+                  <svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden>
+                    <path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
+                </button>
               </div>
               <h2 className="font-display mt-1.5 text-[19px] font-extrabold leading-tight sm:text-[22px]">
                 {stop.title}

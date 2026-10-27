@@ -21,7 +21,7 @@ export const NOAH_STEPS = [
     id: "keel",
     title: "Gopher wood: keel and bottom",
     description:
-      "God gives Noah a set of plans. The work starts from the bottom: a heavy keel on timber cradles, then the flat floor planked across it. ‘Gopher’ wood appears only here in the Bible — the kind of tree is unknown.",
+      "God gives Noah a set of plans. The work starts from the bottom: a heavy keel on timber cradles, the stem rising at the bow and the stern post at the transom, then the flat bottom planked out to the bilge. ‘Gopher’ wood appears only here in the Bible — the kind of tree is unknown.",
     verses: [
       {
         ref: "Genesis 6:14",
@@ -34,7 +34,7 @@ export const NOAH_STEPS = [
     ],
     label: "Keel · gopher wood · 300 cubits",
     measure: "300 × 50 × 30 cubits",
-    interpretive: "Keel, cradle and framing are a builder’s reading; the text gives only the box.",
+    interpretive: "The text gives only the dimensions. Drawn here as a ship — rounded bow, full stern, keel and frames — which is one reading; others draw a plain box.",
   },
   {
     id: "frames",
@@ -54,20 +54,20 @@ export const NOAH_STEPS = [
     id: "planking",
     title: "Planking the hull",
     description:
-      "Strakes are laid up the sides, course by course, and the ends are closed. On the near side most of the planking is left off so the stories inside stay visible.",
+      "Strakes are laid up the round of the bilge and the sides, course by course, closing in to the bow and the transom, and capped with a rail. On the near side the upper planking is left off here so the stories inside stay visible.",
     verses: [
       {
         ref: "Genesis 6:14",
         text: "Make thee an ark of gopher wood…",
       },
     ],
-    label: "Hull planking · 6 strakes",
+    label: "Hull planking · 24 strakes",
   },
   {
     id: "pitch",
     title: "Pitch within and without",
     description:
-      "The whole hull is coated with pitch, inside and out, to make it watertight. The Hebrew word for ‘pitch’ (kopher) shares its root with ‘atonement’ — a covering.",
+      "The hull is coated with pitch, inside and out, to make it watertight. The Hebrew word for ‘pitch’ (kopher) shares its root with ‘atonement’ — a covering.",
     verses: [
       {
         ref: "Genesis 6:14",
@@ -75,12 +75,13 @@ export const NOAH_STEPS = [
       },
     ],
     label: "Pitch · within and without",
+    interpretive: "Drawn below the waterline outside, so the planking still reads above it; the text has the whole hull covered.",
   },
   {
     id: "decks",
     title: "Lower, second and third stories",
     description:
-      "Two decks are laid across the frames, giving three stories, each about nine cubits high.",
+      "Two decks are laid across the frames — the middle deck and the main deck — giving three stories, each about nine cubits high: two in the hull, the third under the deckhouse.",
     verses: [
       {
         ref: "Genesis 6:16",
@@ -109,7 +110,7 @@ export const NOAH_STEPS = [
     id: "roof",
     title: "The roof and the window",
     description:
-      "The roof is raised on posts, leaving an opening a cubit high all the way round beneath it — one reading of the ‘window’ finished a cubit from the top, which lets in light and air.",
+      "A long deckhouse of upright boards holds the third story; its gabled roof is raised on posts, leaving an opening a cubit high all the way round beneath it — one reading of the ‘window’ finished a cubit from the top, which lets in light and air.",
     verses: [
       {
         ref: "Genesis 6:16",
@@ -118,7 +119,7 @@ export const NOAH_STEPS = [
     ],
     label: "Window · a cubit beneath the roof",
     measure: "1 cubit",
-    interpretive: "The window’s form is debated; a continuous 1-cubit opening is one reading.",
+    interpretive: "The window’s form is debated; a continuous 1-cubit opening is one reading. The deckhouse is a reading too.",
   },
   {
     id: "door",

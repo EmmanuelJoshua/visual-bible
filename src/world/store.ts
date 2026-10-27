@@ -45,11 +45,14 @@ type WorldState = {
   overlay: Overlay;
   camera: CameraCommand | null;
   layers: Layers;
+  /** the current stop's full text is open beside the map */
+  details: boolean;
   setYear: (year: number) => void;
   select: (selection: Selection) => void;
   open: (overlay: Overlay) => void;
   fly: (pose: Omit<CameraCommand, "nonce">) => void;
   toggleLayer: (layer: keyof Layers) => void;
+  setDetails: (open: boolean) => void;
 };
 
 export const useWorldStore = create<WorldState>()((set, get) => ({
@@ -57,11 +60,14 @@ export const useWorldStore = create<WorldState>()((set, get) => ({
   selection: null,
   overlay: null,
   camera: null,
-  layers: { journeys: true, people: true, structures: true, events: true },
+  // people and events crowd the map: there to switch on, not on by default
+  layers: { journeys: true, people: false, structures: true, events: false },
+  details: false,
   setYear: (year) => set({ year }),
   select: (selection) => set({ selection }),
   open: (overlay) => set({ overlay }),
   fly: (pose) => set({ camera: { ...pose, nonce: (get().camera?.nonce ?? 0) + 1 } }),
   toggleLayer: (layer) =>
     set((s) => ({ layers: { ...s.layers, [layer]: !s.layers[layer] } })),
+  setDetails: (details) => set({ details }),
 }));

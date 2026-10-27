@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PaddingOptions } from "maplibre-gl";
+import type { Padding } from "@/components/diorama/stage";
 import { eraForYear } from "@/data/eras";
 import { JOURNEYS, journeyById } from "@/data/journeys";
 import { useWorldStore } from "@/world/store";
@@ -120,13 +120,13 @@ export function useKeyboard() {
 export function useMapPadding() {
   const dockRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const [padding, setPadding] = useState<PaddingOptions>({ top: 0, bottom: 0, left: 0, right: 0 });
+  const [padding, setPadding] = useState<Padding>({ top: 0, bottom: 0, left: 0, right: 0 });
   useEffect(() => {
     const measure = () => {
       const dock = dockRef.current?.getBoundingClientRect().height ?? 0;
       const panel = panelRef.current;
       const panelW = panel && panel.offsetParent ? panel.getBoundingClientRect().width + 24 : 0;
-      setPadding({ top: 110, bottom: dock + 8, left: 0, right: panelW });
+      setPadding({ top: 64, bottom: dock + 8, left: 0, right: panelW });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -211,57 +211,134 @@ export function Controls() {
   );
 }
 
-export function JourneyChips() {
+/** the pill the explorer's top bar is made of */
+export const PILL =
+  "flex items-center gap-2 rounded-full border border-white/15 bg-[#0d0b09]/75 px-3.5 py-1.5 text-[12px] font-semibold text-white/90 backdrop-blur-md transition-colors hover:border-white/40 hover:text-white";
+
+export function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 12 12" className={`h-2.5 w-2.5 transition-transform ${open ? "rotate-180" : ""}`} aria-hidden>
+      <path d="M2 4.5 6 8l4-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** a popover that closes on a click outside it or Escape */
+export function usePopover() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("pointerdown", away);
+    window.addEventListener("keydown", esc);
+    return () => {
+      window.removeEventListener("pointerdown", away);
+      window.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return { open, setOpen, ref };
+}
+
+/** the journey you're on, and the list of the others */
+export function JourneyPicker() {
   const journeyId = useJourneyStore((s) => s.journeyId);
   const select = useJourneyStore((s) => s.select);
   const setPlaying = useJourneyStore((s) => s.setPlaying);
-  const activeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [journeyId]);
+  const { open, setOpen, ref } = usePopover();
+  const journey = journeyById.get(journeyId)!;
   return (
-    <div className="no-scrollbar flex gap-1.5 overflow-x-auto px-4 pb-1 sm:px-6 [scrollbar-width:none]">
-      {CHRONO.map((j) => {
-        const active = j.id === journeyId;
-        return (
-          <button
-            key={j.id}
-            ref={active ? activeRef : undefined}
-            type="button"
-            onClick={() => {
-              setPlaying(false);
-              if (!active) select(j.id, 0);
-            }}
-            aria-pressed={active}
-            className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12px] font-semibold backdrop-blur-md transition-colors ${
-              active
-                ? "border-[#d9b45a] bg-[#0d0b09]/90 text-white"
-                : "border-white/15 bg-[#0d0b09]/60 text-white/70 hover:border-white/40 hover:text-white"
-            }`}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: j.color }} />
-            {j.short}
-          </button>
-        );
-      })}
+    <div ref={ref} className="relative">
+      <button type="button" className={PILL} onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="listbox">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: journey.color }} />
+        <span className="max-w-[22ch] truncate">{journey.name}</span>
+        <Chevron open={open} />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Journeys"
+          className="absolute left-0 top-full z-30 mt-2 max-h-[min(70vh,520px)] w-[min(320px,calc(100vw-32px))] overflow-y-auto rounded-md border border-white/15 bg-[#0d0b09]/95 p-1.5 shadow-2xl backdrop-blur-md"
+        >
+          {CHRONO.map((j) => {
+            const active = j.id === journeyId;
+            return (
+              <button
+                key={j.id}
+                type="button"
+                role="option"
+                aria-selected={active}
+                onClick={() => {
+                  setOpen(false);
+                  setPlaying(false);
+                  if (!active) select(j.id, 0);
+                }}
+                className={`flex w-full items-center gap-2.5 rounded-sm px-2.5 py-2 text-left transition-colors ${
+                  active ? "bg-white/10" : "hover:bg-white/5"
+                }`}
+              >
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: j.color }} />
+                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-white">{j.name}</span>
+                <span className="shrink-0 text-[10.5px] tabular-nums text-white/40">{approxYear(j.stops[0].year)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
 
-export function JourneyTitle() {
+/** the stop you're at (or the event in focus), in one line, with the way to its full text */
+export function StopLine() {
   const journeyId = useJourneyStore((s) => s.journeyId);
+  const stopIndex = useJourneyStore((s) => Math.floor(s.t + 1e-6));
+  const focus = useJourneyStore((s) => s.focus);
+  const setFocus = useJourneyStore((s) => s.setFocus);
+  const details = useWorldStore((s) => s.details);
+  const selection = useWorldStore((s) => s.selection);
   const journey = journeyById.get(journeyId)!;
+  const stop = journey.stops[stopIndex];
+  const open = details && !selection;
   return (
-    <div className="pointer-events-none px-4 sm:px-6">
-      <div className="micro-label text-[#d9b45a] [text-shadow:0_1px_6px_rgba(0,0,0,0.9)]">
-        Journeys of Scripture
+    <div className="flex w-full min-w-0 items-center justify-between gap-3 sm:w-auto sm:flex-1 sm:justify-end">
+      <div className="min-w-0 truncate text-[13px] text-white/70 sm:text-right">
+        {focus ? (
+          <>
+            <span className="text-[#d9b45a]">◆</span> <span className="font-semibold text-white">{focus.title}</span>
+            <span className="hidden sm:inline"> · {focus.place}</span>
+          </>
+        ) : (
+          <>
+            <span className="tabular-nums" style={{ color: journey.color }}>
+              {stopIndex + 1}/{journey.stops.length}
+            </span>{" "}
+            <span className="font-semibold text-white">{stop.title}</span>
+            <span className="hidden sm:inline"> · {stop.name}</span>
+          </>
+        )}
       </div>
-      <h1 className="display-tight mt-1 max-w-[16ch] text-[30px] text-white [text-shadow:0_2px_16px_rgba(0,0,0,0.85)] sm:text-[44px]">
-        {journey.name}
-      </h1>
-      <p className="mt-1.5 hidden text-[13px] font-medium text-white/80 [text-shadow:0_1px_6px_rgba(0,0,0,0.9)] sm:block">
-        {journey.subtitle}
-      </p>
+      {focus ? (
+        <button type="button" className="micro-label shrink-0 text-white/55 hover:text-white" onClick={() => setFocus(null)}>
+          Back
+        </button>
+      ) : (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => {
+            const w = useWorldStore.getState();
+            if (w.selection) w.select(null);
+            w.setDetails(!open);
+          }}
+          className="micro-label shrink-0 rounded-sm border border-white/20 px-2.5 py-1.5 !text-[10px] text-white/75 transition-colors hover:border-white/50 hover:text-white"
+        >
+          {open ? "Close" : "Read"}
+        </button>
+      )}
     </div>
   );
 }

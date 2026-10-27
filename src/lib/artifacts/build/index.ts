@@ -4,7 +4,7 @@ import type * as THREE from "three";
 import type { ArtifactMats } from "@/lib/artifacts/materials";
 import { ARK_GEOMETRY } from "./ark";
 import { assemble, type Assembled, type StepFn } from "./engine";
-import { modelSteps } from "./model";
+import { modelSteps, type ModelView } from "./model";
 import { NOAH_GEOMETRY } from "./noah";
 import { TABERNACLE_FX, TABERNACLE_GEOMETRY } from "./tabernacle";
 import { TEMPLE_FX, TEMPLE_GEOMETRY } from "./temple";
@@ -31,14 +31,19 @@ export function hasBuild(id: ArtifactId) {
  * steps replace the code-built ones (plus their fire and light); any step the
  * model leaves out is still built in code.
  */
-export function assembleBuild(id: ArtifactId, m: ArtifactMats, model?: THREE.Group | null): Assembled {
+export function assembleBuild(
+  id: ArtifactId,
+  m: ArtifactMats,
+  model?: THREE.Group | null,
+  view: ModelView = "build",
+): Assembled {
   const info = BUILDS[id];
   const geo = GEOMETRY[id];
   if (!info || !geo) throw new Error(`no build for ${id}`);
   const steps: Record<string, StepFn> = { ...geo };
   if (model) {
     const fx = FX[id] ?? {};
-    for (const [step, fn] of Object.entries(modelSteps(model, m))) {
+    for (const [step, fn] of Object.entries(modelSteps(model, m, view))) {
       if (!(step in geo)) continue;
       steps[step] = (k) => {
         fn(k);
@@ -54,4 +59,4 @@ export function assembleBuild(id: ArtifactId, m: ArtifactMats, model?: THREE.Gro
 }
 
 export { showStep, tickParts, showAll, type Assembled } from "./engine";
-export { loadBuildModel, loadObjectModel, hasModel } from "./model";
+export { loadBuildModel, loadObjectModel, hasModel, type ModelView } from "./model";

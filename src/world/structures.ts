@@ -5,6 +5,10 @@ import type { LngLat } from "@/data/journeys";
  * Where the built structures stood, and when. Years follow the same
  * Ussher-style chronology as `generated/events.json` (Exodus 1490 BC,
  * temple begun 1011 BC), so they line up with the timeline and journeys.
+ *
+ * The tabernacle and the ark stand on the most nearly level ground within a
+ * few hundred metres of the traditional spot (found from the elevation
+ * data), as a camp would pitch: at Sinai, the plain north of Jebel Musa.
  */
 
 export type StructureSite = {
@@ -17,12 +21,14 @@ export type StructureSite = {
   ref: string;
   /** the build is under way across this span: the step follows the year */
   building?: boolean;
+  /** come to rest here rather than built: laid on the ground as it lies */
+  resting?: boolean;
   interpretive?: boolean;
 };
 
 export type StructurePlacement = {
   id: ArtifactId;
-  /** zoom the camera settles at when flying to it — close enough that the 3D model is near true size */
+  /** zoom the camera settles at when flying to it: the model filling the view (distance 72000 / 2^zoom km) */
   zoom: number;
   sites: StructureSite[];
 };
@@ -30,7 +36,7 @@ export type StructurePlacement = {
 export const STRUCTURES: StructurePlacement[] = [
   {
     id: "noahs-ark",
-    zoom: 12.5,
+    zoom: 8.4,
     sites: [
       {
         place: "Mesopotamia",
@@ -44,21 +50,23 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "Mountains of Ararat",
-        coord: [44.2982, 39.7029],
+        // a shelf on Greater Ararat's north-west shoulder, 3,600 m up and nearly level
+        coord: [44.2679, 39.7311],
         from: -2347,
         to: -2300,
         note: "The ark rests “upon the mountains of Ararat” in the seventh month.",
         ref: "Genesis 8:4",
+        resting: true,
       },
     ],
   },
   {
     id: "tabernacle",
-    zoom: 14.5,
+    zoom: 8.5,
     sites: [
       {
         place: "Mount Sinai",
-        coord: [33.9754, 28.5392],
+        coord: [33.9753, 28.5443],
         from: -1490,
         to: -1489,
         note: "Made after the pattern shown on the mount, and raised on the first day of the first month of the second year.",
@@ -68,7 +76,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "The wilderness",
-        coord: [34.4, 30.65],
+        coord: [34.3953, 30.6498],
         from: -1488,
         to: -1452,
         note: "Taken down and carried by the Levites wherever the cloud led, and pitched again at each camp.",
@@ -77,7 +85,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "Gilgal",
-        coord: [35.48, 31.85],
+        coord: [35.4809, 31.8496],
         from: -1451,
         to: -1445,
         note: "The camp at Gilgal, near Jericho, after the crossing of the Jordan.",
@@ -86,7 +94,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "Shiloh",
-        coord: [35.2893, 32.0553],
+        coord: [35.29, 32.0546],
         from: -1444,
         to: -1121,
         note: "“The whole congregation… assembled together at Shiloh, and set up the tabernacle of the congregation there.”",
@@ -94,7 +102,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "Gibeon",
-        coord: [35.1855, 31.8476],
+        coord: [35.1804, 31.8492],
         from: -1120,
         to: -1005,
         note: "The tabernacle of Moses and the bronze altar stand in the high place at Gibeon.",
@@ -104,11 +112,11 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "ark",
-    zoom: 16,
+    zoom: 8.5,
     sites: [
       {
         place: "Mount Sinai",
-        coord: [33.9754, 28.5392],
+        coord: [33.9753, 28.5443],
         from: -1490,
         to: -1489,
         note: "Bezalel makes the ark of shittim wood, overlaid with pure gold.",
@@ -118,7 +126,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "Shiloh",
-        coord: [35.2893, 32.0553],
+        coord: [35.29, 32.0546],
         from: -1444,
         to: -1121,
         note: "Kept in the tabernacle at Shiloh until it is carried out to battle at Ebenezer.",
@@ -126,7 +134,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "Kiriath-jearim",
-        coord: [35.1032, 31.8063],
+        coord: [35.1041, 31.8051],
         from: -1120,
         to: -1043,
         note: "Returned by the Philistines, it stays twenty years and more in the house of Abinadab.",
@@ -134,7 +142,7 @@ export const STRUCTURES: StructurePlacement[] = [
       },
       {
         place: "City of David",
-        coord: [35.2356, 31.7735],
+        coord: [35.2351, 31.7726],
         from: -1042,
         to: -1005,
         note: "David brings it up with shouting and sets it in the tent he had pitched for it.",
@@ -152,7 +160,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "temple",
-    zoom: 15.5,
+    zoom: 8.5,
     sites: [
       {
         place: "Mount Moriah",

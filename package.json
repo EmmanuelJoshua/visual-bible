@@ -8,15 +8,19 @@
     "start": "next start",
     "lint": "eslint",
     "build:data": "tsx scripts/build-data.mts",
-    "build:models": "bash scripts/build-models.sh"
+    "build:models": "bash scripts/build-models.sh",
+    "build:water": "python3 scripts/build-water.py",
+    "build:diorama": "python3 scripts/build-diorama.py"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@designcodeio/threeui": "^0.3.0",
+    "@takram/three-atmosphere": "^0.19.1",
+    "@takram/three-geospatial": "^0.9.1",
     "@xyflow/react": "^12.11.3",
     "framer-motion": "^13.1.1",
-    "maplibre-gl": "^6.15.0",
     "next": "16.3.2",
+    "postprocessing": "^6.39.5",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "three": "^0.185.1",

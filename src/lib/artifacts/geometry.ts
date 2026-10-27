@@ -283,7 +283,8 @@ export async function loadArtifactObject(id: ArtifactId, m: ArtifactMats): Promi
   if (hasBuild(id)) {
     const model = await loadBuildModel(id);
     if (model) {
-      const g = assembleBuild(id, m, model).root;
+      // the desk shows the finished piece, whole (no step-by-step cut-aways)
+      const g = assembleBuild(id, m, model, "map").root;
       g.name = id;
       return g;
     }

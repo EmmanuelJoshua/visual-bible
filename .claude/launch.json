@@ -2,9 +2,27 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "3417"
+      ],
+      "port": 3417
+    },
+    {
       "name": "static-export",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4317", "--directory", "out"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4317",
+        "--directory",
+        "out"
+      ],
       "port": 4317
     }
   ]

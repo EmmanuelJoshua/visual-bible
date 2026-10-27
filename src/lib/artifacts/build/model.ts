@@ -122,14 +122,20 @@ function dress(src: THREE.Object3D, m: ArtifactMats): THREE.Object3D {
   return obj;
 }
 
-/** one StepFn per `step_<id>` node in the model */
-export function modelSteps(model: THREE.Group, m: ArtifactMats): Record<string, StepFn> {
+/** where a model is shown: the step-by-step view keeps its cut-aways, the map and desk show it whole */
+export type ModelView = "build" | "map";
+
+/** one StepFn per `step_<id>` node in the model, keeping the parts meant for `view` */
+export function modelSteps(model: THREE.Group, m: ArtifactMats, view: ModelView = "build"): Record<string, StepFn> {
   const out: Record<string, StepFn> = {};
   for (const node of model.children) {
     if (!node.name.startsWith("step_")) continue;
     const id = node.name.slice(5);
     out[id] = (k) => {
-      for (const part of node.children) k.add(dress(part, m), partOpts(part.userData));
+      for (const part of node.children) {
+        const only = part.userData.view as ModelView | undefined;
+        if (!only || only === view) k.add(dress(part, m), partOpts(part.userData));
+      }
       const a = node.userData.anchor as number[] | undefined;
       if (a?.length === 3) k.anchor(a[0], a[1], a[2]);
     };
