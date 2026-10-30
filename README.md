@@ -76,14 +76,44 @@ first time) makes it in three steps:
   whole-map preview, a heightmap and sea mask for the app, and the chunk
   meshes (meshopt) into `public/diorama/`, with a versioned `meta.json`.
 
-In the app the land is drawn as rendered, unlit; each chunk sharpens as the
+A fourth step, **close**, makes what the land needs up close: each chunk's
+painted colour unshaded (`alb/`), heights in metres over the whole map, the
+lakes with their levels, and ground grain from Poly Haven textures.
+
+From afar the land is drawn as rendered, unlit; each chunk sharpens as the
 camera nears, and everything is kept in Cache Storage after the first visit.
 The seas are clear resin over the painted sea floor. The cut sides show rock
 strata (and the resin where a coast meets the edge), on a dark plinth. The
 studio has a warm backdrop, drifting light shafts and dust, shallow depth of
-field, vignette and grain. The build models stand at their sites at diorama
-size, lit by the same north-west key light so their shadows match the
-render's.
+field, vignette and grain.
+
+Come down and the land builds itself (`terrain.ts`): a tree of tiles
+streamed from the elevation tiles, down to about 40 m, lit live, the
+exaggeration easing from 7× to 1.8×. Its ground takes the painting's colour
+with the grain of rock, scrub and sand, red soil, dark maquis, limestone and
+terraces on the farmed hills. On it (`scatter.ts`) stand trees, scrub and
+boulders, and the towns of `src/world/towns.ts`, from a Blender kit
+(`blender/landscape.py`, `public/models/landscape.glb`): olives and oaks on
+the hills, palms by the rivers, pine in the mountains, acacia in the desert,
+orchards in rows round the towns. They are chosen by the painting's colour,
+the slope, the height and the latitude, the same every visit, and drawn
+larger than life (as a model railway's are).
+
+The cities (`cities.ts`, from `src/world/towns.ts`) are some 120 places
+from Ur and Jericho to Rome, each with its years, its building style
+(Canaanite stone, Mesopotamian and Egyptian mudbrick, Greek and Roman
+tiles), its walls (a ring or a rectangle) and the landmarks it is remembered
+by. Those come from the second Blender kit (`blender/city.py`,
+`public/models/city.glb`): Greek and Egyptian temples, theatres, the circus
+and the Colosseum, colonnaded streets, ziggurats, palaces and the Persian
+apadana, the pyramids, obelisks, the Pharos, citadels, harbour moles and
+aqueducts. A city stands only in its years (it follows the timeline), and
+grows or shrinks by phase (Jerusalem from David's ridge to Herod's three
+walls). Close up it is at its true size, the blocks near the camera opened
+into houses; from further off it grows into a miniature of itself, so
+Antioch still reads from a hundred kilometres. Down there the studio gives way to an
+open sky. The build models grow from diorama size to their true size as the
+camera comes down to them, with the ground cleared round them.
 
 Needs Python with numpy, scipy, Pillow and requests, and Blender
 (`BLENDER=` to override the path). Downloads and intermediate tiles live in

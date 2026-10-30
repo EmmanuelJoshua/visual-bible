@@ -56,7 +56,7 @@ function PeopleLayer({ stage }: { stage: DioramaStage }) {
   useEffect(() => {
     const markers = groups.map((g) =>
       // left of the point: the stop's name sits to its right, its card above
-      new DioramaMarker(g.el, { anchor: "right", offset: [-16, 0] }).setLngLat(g.coord).addTo(stage),
+      new DioramaMarker(g.el, { anchor: "right", offset: [-16, 0], priority: 1.5 }).setLngLat(g.coord).addTo(stage),
     );
     return () => markers.forEach((m) => m.remove());
   }, [stage, groups]);
@@ -155,7 +155,7 @@ function StructuresLayer({ stage }: { stage: DioramaStage }) {
   useEffect(() => {
     const markers = items.map((s) =>
       // under the model, as a museum label sits under the piece
-      new DioramaMarker(s.el, { anchor: "top", offset: [0, 22] }).setLngLat(s.site.coord).addTo(stage),
+      new DioramaMarker(s.el, { anchor: "top", offset: [0, 22], priority: 3 }).setLngLat(s.site.coord).addTo(stage),
     );
     return () => markers.forEach((m) => m.remove());
   }, [stage, items]);
@@ -248,6 +248,13 @@ function StructureModels({ stage }: { stage: DioramaStage }) {
   return null;
 }
 
+/** the cities on the map stand as they were in the year */
+function CityYear({ stage }: { stage: DioramaStage }) {
+  const year = useWholeYear();
+  useEffect(() => stage.setYear(year), [stage, year]);
+  return null;
+}
+
 /* --------------------------------- events --------------------------------- */
 
 const LOCATED = allEvents.filter((e) => focusFor(e));
@@ -269,7 +276,7 @@ function EventsLayer({ stage }: { stage: DioramaStage }) {
 
   useEffect(() => {
     const markers = items.map(({ e, el }) =>
-      new DioramaMarker(el, { anchor: "center" }).setLngLat(focusFor(e)!.coord).addTo(stage),
+      new DioramaMarker(el, { anchor: "center", priority: 1 }).setLngLat(focusFor(e)!.coord).addTo(stage),
     );
     return () => markers.forEach((m) => m.remove());
   }, [stage, items]);
@@ -306,6 +313,7 @@ export function WorldLayers({ stage }: { stage: DioramaStage }) {
       {layers.people && <PeopleLayer stage={stage} />}
       {layers.structures && <StructuresLayer stage={stage} />}
       {layers.structures && <StructureModels stage={stage} />}
+      <CityYear stage={stage} />
     </>
   );
 }

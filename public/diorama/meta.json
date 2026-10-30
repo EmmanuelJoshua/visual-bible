@@ -1,5 +1,5 @@
 {
- "version": 1793107936,
+ "version": 1793142847,
  "west": 10.0,
  "south": 22.0,
  "east": 56.0,
@@ -380,5 +380,124 @@
    "mesh": "mesh/c7r3.glb",
    "l1": "tex/c7r3.webp"
   }
- ]
+ ],
+ "albedo": {
+  "c0r0": {
+   "l1": "alb/c0r0.webp"
+  },
+  "c1r0": {
+   "l1": "alb/c1r0.webp"
+  },
+  "c2r0": {
+   "l1": "alb/c2r0.webp"
+  },
+  "c3r0": {
+   "l1": "alb/c3r0.webp"
+  },
+  "c4r0": {
+   "l1": "alb/c4r0.webp"
+  },
+  "c5r0": {
+   "l1": "alb/c5r0.webp"
+  },
+  "c6r0": {
+   "l1": "alb/c6r0.webp"
+  },
+  "c7r0": {
+   "l1": "alb/c7r0.webp"
+  },
+  "c0r1": {
+   "l1": "alb/c0r1.webp"
+  },
+  "c1r1": {
+   "l1": "alb/c1r1.webp"
+  },
+  "c2r1": {
+   "l1": "alb/c2r1.webp"
+  },
+  "c3r1": {
+   "l1": "alb/c3r1.webp",
+   "l2": "alb/c3r1-2.webp"
+  },
+  "c4r1": {
+   "l1": "alb/c4r1.webp",
+   "l2": "alb/c4r1-2.webp"
+  },
+  "c5r1": {
+   "l1": "alb/c5r1.webp",
+   "l2": "alb/c5r1-2.webp"
+  },
+  "c6r1": {
+   "l1": "alb/c6r1.webp"
+  },
+  "c7r1": {
+   "l1": "alb/c7r1.webp"
+  },
+  "c0r2": {
+   "l1": "alb/c0r2.webp"
+  },
+  "c1r2": {
+   "l1": "alb/c1r2.webp"
+  },
+  "c2r2": {
+   "l1": "alb/c2r2.webp"
+  },
+  "c3r2": {
+   "l1": "alb/c3r2.webp",
+   "l2": "alb/c3r2-2.webp"
+  },
+  "c4r2": {
+   "l1": "alb/c4r2.webp",
+   "l2": "alb/c4r2-2.webp"
+  },
+  "c5r2": {
+   "l1": "alb/c5r2.webp",
+   "l2": "alb/c5r2-2.webp"
+  },
+  "c6r2": {
+   "l1": "alb/c6r2.webp"
+  },
+  "c7r2": {
+   "l1": "alb/c7r2.webp"
+  },
+  "c0r3": {
+   "l1": "alb/c0r3.webp"
+  },
+  "c1r3": {
+   "l1": "alb/c1r3.webp"
+  },
+  "c2r3": {
+   "l1": "alb/c2r3.webp"
+  },
+  "c3r3": {
+   "l1": "alb/c3r3.webp"
+  },
+  "c4r3": {
+   "l1": "alb/c4r3.webp"
+  },
+  "c5r3": {
+   "l1": "alb/c5r3.webp"
+  },
+  "c6r3": {
+   "l1": "alb/c6r3.webp"
+  },
+  "c7r3": {
+   "l1": "alb/c7r3.webp"
+  }
+ },
+ "metres": {
+  "path": "metres.png",
+  "offset": 11000.0
+ },
+ "lakes": "lakes.json",
+ "ground": [
+  "ground-a.webp",
+  "ground-b.webp"
+ ],
+ "model": {
+  "vertical": 7.0,
+  "seaVertical": 2.5,
+  "seaFloor": -3000.0,
+  "peakEase": 2000.0
+ }
 }

@@ -119,7 +119,7 @@ export default function DioramaMap({ padding, onStage }: Props) {
       el.className = r.sea ? styles.regionSea : styles.region;
       el.textContent = r.name;
       el.style.transition = "opacity 400ms";
-      return new DioramaMarker(el, { anchor: "center", interactive: false }).setLngLat(r.at).addTo(s);
+      return new DioramaMarker(el, { anchor: "center", interactive: false, priority: 0.5 }).setLngLat(r.at).addTo(s);
     });
     let regionsOn: boolean | null = null;
     const offFrame = s.onFrame(() => {
@@ -153,7 +153,7 @@ export default function DioramaMap({ padding, onStage }: Props) {
     let flying = false;
     let lastStop = -1;
 
-    const traveller = new DioramaMarker(travellerEl, { anchor: "center", interactive: false })
+    const traveller = new DioramaMarker(travellerEl, { anchor: "center", interactive: false, priority: 0 })
       .setLngLat(markerAt(journeyById.get(store.getState().journeyId)!, 0))
       .addTo(stage);
     const offUserMove = stage.onUserMove(() => {
@@ -254,7 +254,7 @@ export default function DioramaMap({ padding, onStage }: Props) {
   /* ------------------------------ stop markers ----------------------------- */
   useEffect(() => {
     if (!stage) return;
-    const markers = places.map((p) => new DioramaMarker(p.el, { anchor: "center" }).setLngLat(p.coord).addTo(stage));
+    const markers = places.map((p) => new DioramaMarker(p.el, { anchor: "center", priority: 1 }).setLngLat(p.coord).addTo(stage));
     void stage.ready.then(() => markers.forEach((m) => m.setLngLat(m.lngLat)));
     return () => markers.forEach((m) => m.remove());
   }, [stage, places]);
@@ -263,7 +263,7 @@ export default function DioramaMap({ padding, onStage }: Props) {
   const labelAt: LngLat | null = focus ? focus.coord : nearStop >= 0 ? journey.stops[nearStop].coord : null;
   useEffect(() => {
     if (!stage || !labelAt) return;
-    const marker = new DioramaMarker(labelEl, { anchor: "bottom", offset: [0, 11], interactive: false })
+    const marker = new DioramaMarker(labelEl, { anchor: "bottom", offset: [0, 11], interactive: false, priority: 0 })
       .setLngLat(labelAt)
       .addTo(stage);
     return () => marker.remove();

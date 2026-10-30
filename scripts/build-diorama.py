@@ -470,9 +470,145 @@ def step_pack():
     print(f"  public/diorama: {total / 1e6:.1f} MB", flush=True)
 
 
+# ---------------------------------------------------------------- close up
+#
+# What the app needs to build the land itself as the camera nears: the painted
+# colour without its shading (it lights the land live up close), the lakes at
+# their own levels, heights in metres, and the grain of the ground.
+
+#: the ground's grain, by layer: textures from Poly Haven (CC0); luminance only, packed four to an image
+GROUND = {
+    "a": ["rock_face", "aerial_rocks_04", "rocky_terrain_02", "aerial_beach_01"],  # cliff, stony hill, meadow, sand
+    "b": ["dry_ground_rocks"],  # plain
+}
+METRE_OFFSET = 11000.0
+LAKE_MIN_DEG2 = 0.004  # smaller lakes are left to the painting
+
+
+def step_close():
+    os.makedirs(os.path.join(OUT, "alb"), exist_ok=True)
+    # the painted colour, unshaded: a 1024 for every chunk, a 2048 where the land is finer
+    for r in range(ROWS):
+        for c in range(COLS):
+            cid = f"c{c}r{r}"
+            with open(os.path.join(WORK, f"{cid}.json")) as f:
+                meta = json.load(f)
+            mx, my = meta["margin"]
+            img = Image.open(os.path.join(WORK, f"{cid}.colour.png")).convert("RGB")
+            img = img.crop((mx, my, img.width - mx, img.height - my))
+            img.resize((1024, round(1024 * img.height / img.width)), Image.LANCZOS).save(os.path.join(OUT, "alb", f"{cid}.webp"), quality=88, method=5)
+            if (c, r) in FINE:
+                q = []
+                for qy in range(2):
+                    row = []
+                    for qx in range(2):
+                        with open(os.path.join(WORK, f"{cid}q{qx}{qy}.json")) as f:
+                            qm = json.load(f)
+                        qmx, qmy = qm["margin"]
+                        im = Image.open(os.path.join(WORK, f"{cid}q{qx}{qy}.colour.png")).convert("RGB")
+                        row.append(im.crop((qmx, qmy, im.width - qmx, im.height - qmy)))
+                    q.append(row)
+                qw, qh = q[0][0].size
+                big = Image.new("RGB", (qw * 2, qh * 2))
+                for qy in range(2):
+                    for qx in range(2):
+                        big.paste(q[qy][qx], (qx * qw, qy * qh))
+                big.resize((2048, round(2048 * big.height / big.width)), Image.LANCZOS).save(os.path.join(OUT, "alb", f"{cid}-2.webp"), quality=86, method=5)
+            print(f"  albedo {cid}", flush=True)
+    # heights in metres over the whole map (the fallback until the live terrain is in)
+    W = round((EAST - WEST) / HEIGHT_STEP)
+    H = round((NORTH - SOUTH) / HEIGHT_STEP)
+    h = resample("dem", 8, WEST, SOUTH, EAST, NORTH, W, H)
+    land = whole("land", HEIGHT_STEP)
+    h = fill_seabed(h, resample("dem", 6, WEST, SOUTH, EAST, NORTH, W, H), land, (EAST - WEST) * KM_LNG / W)
+    v = np.clip(np.round(h + METRE_OFFSET), 0, 65535).astype(np.uint32)
+    Image.fromarray(np.stack([(v >> 8) & 255, v & 255, np.zeros_like(v)], -1).astype(np.uint8)).save(os.path.join(OUT, "metres.png"), optimize=True)
+    # the lakes, each at its own level
+    vectors()
+    lakes = []
+    for props, poly in polys(LAKES):
+        # dammed in the last century: not the Bible's world
+        if props.get("featurecla") == "Reservoir":
+            continue
+        ring = poly[0]
+        xs = [p[0] for p in ring]
+        ys = [p[1] for p in ring]
+        if max(xs) < WEST or min(xs) > EAST or max(ys) < SOUTH or min(ys) > NORTH:
+            continue
+        if (max(xs) - min(xs)) * (max(ys) - min(ys)) < LAKE_MIN_DEG2:
+            continue
+        box = (min(xs), min(ys), max(xs), max(ys))
+        gw = max(8, round((box[2] - box[0]) / 0.004))
+        gh = max(8, round((box[3] - box[1]) / 0.004))
+        im = Image.new("L", (gw, gh), 0)
+        ImageDraw.Draw(im).polygon([((x - box[0]) / (box[2] - box[0]) * gw, (box[3] - y) / (box[3] - box[1]) * gh) for x, y in ring], fill=255)
+        mask = np.asarray(im) > 127
+        if mask.sum() < 4:
+            continue
+        hs = resample("dem", 9, *box, gw, gh)[mask]
+        level = float(np.percentile(hs, 30))
+        # a few metres below the sea is noise at a coast; the true basins lie far deeper
+        if -60 < level < 0:
+            level = 0.0
+        simple = simplify(ring, 0.0025)
+        lakes.append(dict(name=props.get("name") or "", level=round(level, 1), ring=[[round(x, 4), round(y, 4)] for x, y in simple]))
+        print(f"  lake {props.get('name')}: {level:.0f} m, {len(simple)} points", flush=True)
+    with open(os.path.join(OUT, "lakes.json"), "w") as f:
+        json.dump(lakes, f)
+    # the ground's grain
+    for key, names in GROUND.items():
+        chans = []
+        for name in names:
+            path = os.path.join(RAW, "ground", f"{name}.jpg")
+            if not os.path.exists(path):
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                r = session.get(f"https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/{name}/{name}_diff_1k.jpg", timeout=120)
+                r.raise_for_status()
+                with open(path, "wb") as f:
+                    f.write(r.content)
+            lum = np.asarray(Image.open(path).convert("L").resize((1024, 1024), Image.LANCZOS), np.float32)
+            # centred on mid-grey, its contrast evened out, so it only shades the colour it lies on
+            lum = (lum - lum.mean()) / (lum.std() + 1e-6) * 38 + 128
+            chans.append(np.clip(lum, 0, 255).astype(np.uint8))
+        while len(chans) < 4:
+            chans.append(np.full((1024, 1024), 128, np.uint8))
+        Image.fromarray(np.stack(chans, -1), "RGBA").save(os.path.join(OUT, f"ground-{key}.webp"), quality=90, method=5)
+    with open(os.path.join(OUT, "meta.json")) as f:
+        meta = json.load(f)
+    meta.update(
+        version=int(os.path.getmtime(os.path.join(OUT, "metres.png"))),
+        albedo={c["id"]: dict(l1=f"alb/{c['id']}.webp", **({"l2": f"alb/{c['id']}-2.webp"} if (c["col"], c["row"]) in FINE else {})) for c in meta["chunks"]},
+        metres=dict(path="metres.png", offset=METRE_OFFSET),
+        lakes="lakes.json",
+        ground=["ground-a.webp", "ground-b.webp"],
+        model=dict(vertical=VERTICAL, seaVertical=SEA_VERTICAL, seaFloor=SEA_FLOOR, peakEase=PEAK_EASE),
+    )
+    with open(os.path.join(OUT, "meta.json"), "w") as f:
+        json.dump(meta, f, indent=1)
+    print("  meta.json updated", flush=True)
+
+
+def simplify(pts, tol):
+    """Douglas-Peucker; a closed ring is split at its farthest point first"""
+    pts = [tuple(p) for p in pts]
+    if len(pts) > 3 and pts[0] == pts[-1]:
+        far = max(range(len(pts)), key=lambda i: math.hypot(pts[i][0] - pts[0][0], pts[i][1] - pts[0][1]))
+        return simplify(pts[: far + 1], tol)[:-1] + simplify(pts[far:], tol)
+    if len(pts) < 3:
+        return pts
+    (ax, ay), (bx, by) = pts[0], pts[-1]
+    dx, dy = bx - ax, by - ay
+    n = math.hypot(dx, dy) or 1e-12
+    dists = [abs(dx * (py - ay) - dy * (px - ax)) / n for px, py in pts[1:-1]]
+    i = max(range(len(dists)), key=dists.__getitem__) + 1
+    if dists[i - 1] > tol:
+        return simplify(pts[: i + 1], tol)[:-1] + simplify(pts[i:], tol)
+    return [pts[0], pts[-1]]
+
+
 if __name__ == "__main__":
-    steps = sys.argv[1:2] or ["data", "render", "pack"]
+    steps = sys.argv[1:2] or ["data", "render", "pack", "close"]
     only = sys.argv[2] if len(sys.argv) > 2 else None
-    for step in (["data", "render", "pack"] if steps == ["all"] else steps):
+    for step in (["data", "render", "pack", "close"] if steps == ["all"] else steps):
         print(f"▸ {step}", flush=True)
-        {"data": lambda: step_data(only), "render": lambda: step_render(only), "pack": step_pack}[step]()
+        {"data": lambda: step_data(only), "render": lambda: step_render(only), "pack": step_pack, "close": step_close}[step]()

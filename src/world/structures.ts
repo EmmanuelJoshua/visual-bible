@@ -36,7 +36,7 @@ export type StructurePlacement = {
 export const STRUCTURES: StructurePlacement[] = [
   {
     id: "noahs-ark",
-    zoom: 8.4,
+    zoom: 16.2,
     sites: [
       {
         place: "Mesopotamia",
@@ -62,7 +62,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "tabernacle",
-    zoom: 8.5,
+    zoom: 16.9,
     sites: [
       {
         place: "Mount Sinai",
@@ -112,7 +112,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "ark",
-    zoom: 8.5,
+    zoom: 16.3,
     sites: [
       {
         place: "Mount Sinai",
@@ -160,7 +160,7 @@ export const STRUCTURES: StructurePlacement[] = [
   },
   {
     id: "temple",
-    zoom: 8.5,
+    zoom: 16.5,
     sites: [
       {
         place: "Mount Moriah",

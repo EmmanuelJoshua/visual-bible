@@ -9,10 +9,12 @@ import type { DioramaStage } from "./stage";
 /**
  * The step-by-step builds standing on the diorama at their sites.
  *
- * The map is a model some four thousand kilometres across, so a true-size
- * temple would be a speck: each build is drawn at a fixed model size, a
- * landmark tens of kilometres across, as a museum diorama's buildings are
- * made larger than its land. The studio's key light — the sun the map was
+ * From afar the map is a model four thousand kilometres across, where a
+ * true-size temple would be a speck: there each build is drawn as a landmark
+ * tens of kilometres across, as a museum diorama's buildings are made larger
+ * than its land. Come down and it shrinks back to its true size, cubit for
+ * cubit, standing among the hills as it stood (but never smaller than a
+ * speck you could find). The studio's key light — the sun the map was
  * rendered under — lights them, and their shadows fall on the land.
  *
  * A building stands level at the height of the ground under it; a vessel
@@ -95,6 +97,7 @@ export class DioramaModels {
     const keep = new Set(list.map((s) => s.id));
     for (const [id, e] of this.entries) {
       if (keep.has(id)) continue;
+      this.stage.clearings.delete(id);
       this.root.remove(e.holder, e.shadow);
       e.shadow.geometry.dispose();
       e.asm?.root.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
@@ -126,15 +129,28 @@ export class DioramaModels {
 
   /* ------------------------------------------------------------ placing */
 
+  /** km a cubit is drawn at, seen from `dist` km: diorama size afar, true size near */
+  private scaleAt(e: Entry, dist: number) {
+    const trueSpan = (SPAN_CUBITS[e.id] ?? 50) * CUBIT_KM;
+    const k = smoothstep(3, 240, dist);
+    const span = Math.max(trueSpan * (1 + (enlargement(e.id) - 1) * k), dist * 0.035);
+    return CUBIT_KM * (span / trueSpan);
+  }
+
   private place(e: Entry) {
-    const key = `${e.coord[0]},${e.coord[1]},${e.resting},${!!e.footprint}`;
+    const centre = this.stage.world(e.coord);
+    const dist = this.stage.eye.distanceTo(centre);
+    const scale = this.scaleAt(e, dist);
+    // re-seated when it has grown or shrunk, or the land's exaggeration has changed, by a few percent
+    const q = (v: number) => Math.round(Math.log(v) / 0.03);
+    const key = `${e.coord[0]},${e.coord[1]},${e.resting},${!!e.footprint},${q(scale)},${q(this.stage.exaggeration)}`;
     if (e.placed === key) return;
     e.placed = key;
-    const centre = this.stage.world(e.coord);
-    const scale = CUBIT_KM * enlargement(e.id);
     const fp = e.footprint;
     const sx = fp ? (fp.max.x - fp.min.x) * scale : 10;
     const sz = fp ? (fp.max.z - fp.min.z) * scale : 10;
+    // no trees or houses through it
+    if (fp) this.stage.clearings.set(e.id, { at: e.coord, km: Math.hypot(sx, sz) / 2 + 0.012 });
     const ground = (x: number, z: number) => this.stage.world(this.stage.lngLatOf(new THREE.Vector3(centre.x + x, 0, centre.z + z))).y;
     const sample = (yaw: number) => {
       const pts: [number, number, number][] = [];
@@ -257,7 +273,13 @@ export class DioramaModels {
       e.shadow.geometry.dispose();
     }
     this.shadowMat.dispose();
+    for (const id of this.entries.keys()) this.stage.clearings.delete(id);
     this.entries.clear();
     this.stage.scene.remove(this.root);
   }
+}
+
+function smoothstep(a: number, b: number, x: number) {
+  const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }

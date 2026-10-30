@@ -14,12 +14,26 @@ export function backdrop() {
   const mat = new THREE.ShaderMaterial({
     depthTest: false,
     depthWrite: false,
-    uniforms: { uTime: { value: 0 }, uAspect: { value: 1 } },
+    uniforms: {
+      uTime: { value: 0 },
+      uAspect: { value: 1 },
+      /** 0 the studio, 1 the open sky (once the camera is down among the land) */
+      uSky: { value: 0 },
+      uProjInv: { value: new THREE.Matrix4() },
+      uCamWorld: { value: new THREE.Matrix4() },
+      uSun: { value: new THREE.Vector3(0, 1, 0) },
+      uHorizon: { value: new THREE.Color(0.72, 0.67, 0.6) },
+    },
     vertexShader: "varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }",
     fragmentShader: `
       varying vec2 vUv;
       uniform float uAspect;
       uniform float uTime;
+      uniform float uSky;
+      uniform mat4 uProjInv;
+      uniform mat4 uCamWorld;
+      uniform vec3 uSun;
+      uniform vec3 uHorizon;
       float hash(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5453); }
       void main() {
         vec2 p = (vUv - vec2(0.5, 0.56)) * vec2(uAspect, 1.0);
@@ -28,6 +42,20 @@ export function backdrop() {
         vec3 inner = vec3(0.19, 0.145, 0.105);
         vec3 outer = vec3(0.028, 0.022, 0.018);
         vec3 c = mix(inner, outer, smoothstep(0.05, 0.95, r));
+        if (uSky > 0.0) {
+          // the sky over the land: dusty pale at the horizon (as the far land hazes), clearing to blue overhead
+          vec4 v = uProjInv * vec4(vUv * 2.0 - 1.0, 1.0, 1.0);
+          vec3 dir = normalize((uCamWorld * vec4(v.xyz / v.w, 0.0)).xyz);
+          float up = max(dir.y, 0.0);
+          vec3 zenith = vec3(0.3, 0.45, 0.68);
+          vec3 sky = mix(uHorizon, zenith, pow(smoothstep(0.0, 0.7, up), 0.7));
+          // below the horizon (past the model's edge) the haze, a little darker
+          sky = mix(sky, uHorizon * 0.82, smoothstep(0.0, -0.08, dir.y));
+          // the sun's glow
+          float sun = max(dot(dir, uSun), 0.0);
+          sky += vec3(1.0, 0.86, 0.66) * (pow(sun, 8.0) * 0.18 + pow(sun, 200.0) * 0.6);
+          c = mix(c, sky, uSky);
+        }
         c += (hash(vUv * 1024.0 + uTime) - 0.5) * 0.006;
         gl_FragColor = vec4(c, 1.0);
       }`,
