@@ -12,7 +12,7 @@ import { presenceAt, type Presence } from "@/world/presence";
 import { structuresAt, type StructureAt } from "@/world/structures";
 import { DioramaModels } from "@/components/diorama/models";
 import { DioramaMarker, type DioramaStage } from "@/components/diorama/stage";
-import { showPerson, showStructure } from "@/world/actions";
+import { closeOverlay, goToYear, openBuild, showPerson, showStructure } from "@/world/actions";
 import { useWorldStore } from "@/world/store";
 import styles from "./world.module.css";
 
@@ -252,6 +252,10 @@ function StructureModels({ stage }: { stage: DioramaStage }) {
 function CityYear({ stage }: { stage: DioramaStage }) {
   const year = useWholeYear();
   useEffect(() => stage.setYear(year), [stage, year]);
+  // for scripts/diorama-shot.mjs: /explore?debug hands the page the world's verbs, to set the year and open a build
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("debug")) Object.assign(window, { __world: { goToYear, showStructure, openBuild, closeOverlay } });
+  }, []);
   return null;
 }
 

@@ -236,11 +236,14 @@ def block(name, style):
     p = Parts()
     rnd = random.Random(hash(name) & 0xFFFF)
     if style == "roman":
-        tiled_house(p, -12, -8, 20, 16, 5)
-        tiled_house(p, 12, -9, 18, 14, 5)
-        box(p["plaster"], (-22, 2, -3), (2, 16, 12))
-        hipped(p["terracotta"], (-22.4, 1.6, 12), (2.4, 16.4, 14.5), 0.5)
-        tiled_house(p, 13, 9, 18, 14, 5.5)
+        # an insula of the city's grid, built up to its streets: courtyard houses wall to wall, and a taller block of flats
+        for j, y in enumerate((-9, 9)):
+            for i, x in enumerate((-16, 0, 16)):
+                if (i, j) == (0, 1):
+                    box(p["plaster"], (x - 7.8, y - 8.8, -3), (x + 7.8, y + 8.8, 11))
+                    hipped(p["terracotta"], (x - 8.1, y - 9.1, 11), (x + 8.1, y + 9.1, 13.4), 0.45)
+                else:
+                    tiled_house(p, x, y, 15.6, 17.6, rnd.choice((4.6, 5.2, 6.4, 7.6)))
         return join(name, p)
     stuff = "mudbrick" if style == "mud" else "limestone"
     # houses packed along two lanes, of a storey or two, a few with an upper room

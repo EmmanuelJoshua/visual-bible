@@ -4,9 +4,9 @@ import { useEffect, useRef } from "react";
 import type { DioramaStage, Padding } from "./stage";
 
 /**
- * A quiet instrument readout over the model, as on a camera's screen: crop
- * marks at the corners, and where the lens points — the place, how much
- * land is in the frame, which way it faces. Written straight into the DOM
+ * A quiet instrument readout over the model, as on a camera's screen: where
+ * the lens points — the place, how much land is in the frame, which way it
+ * faces. Written straight into the DOM
  * each frame, never through React.
  */
 export function Instruments({ stage, padding }: { stage: DioramaStage; padding: Padding }) {
@@ -32,18 +32,8 @@ export function Instruments({ stage, padding }: { stage: DioramaStage; padding: 
     });
   }, [stage]);
 
-  const mark = "pointer-events-none absolute h-3.5 w-3.5 border-white/30";
   return (
     <div className="pointer-events-none absolute inset-0 z-[5]" aria-hidden>
-      <div
-        className="absolute inset-x-4"
-        style={{ top: (padding.top ?? 0) + 4, bottom: (padding.bottom ?? 0) + 4 }}
-      >
-        <span className={`${mark} left-0 top-0 border-l border-t`} />
-        <span className={`${mark} right-0 top-0 border-r border-t`} />
-        <span className={`${mark} bottom-0 left-0 border-b border-l`} />
-        <span className={`${mark} bottom-0 right-0 border-b border-r`} />
-      </div>
       <div
         ref={readout}
         className="absolute right-5 hidden whitespace-pre font-mono text-[10px] tracking-[0.14em] text-white/40 sm:block"

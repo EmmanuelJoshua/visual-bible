@@ -62,7 +62,8 @@ export function pathOf(j: Journey): JourneyPath {
   for (let i = 1; i < j.stops.length; i++) {
     const a = j.stops[i - 1].coord;
     const b = j.stops[i].coord;
-    const pts: LngLat[] = [a, ...(j.stops[i].via ?? []), b];
+    const via = j.stops[i].via;
+    const pts: LngLat[] = via?.length ? [a, ...via, b] : j.stops[i].newLeg ? [a, b] : bowed(a, b);
     const cum = [0];
     for (let k = 1; k < pts.length; k++)
       cum.push(cum[k - 1] + distanceKm(pts[k - 1], pts[k]));
@@ -87,6 +88,31 @@ export function pathOf(j: Journey): JourneyPath {
   const path = { segments, stopZoom };
   pathCache.set(j.id, path);
   return path;
+}
+
+/**
+ * a leg with no road given, as a gentle arc bowed to the right of travel: a
+ * journey there and back draws two curves side by side, not one line twice
+ */
+function bowed(a: LngLat, b: LngLat): LngLat[] {
+  const k = Math.cos(rad((a[1] + b[1]) / 2));
+  const dx = (b[0] - a[0]) * k;
+  const dy = b[1] - a[1];
+  const len = Math.hypot(dx, dy);
+  // under ~3 km, straight
+  if (len < 0.03) return [a, b];
+  // the control point: off the middle, to the right, by a seventh of the length
+  const bow = 0.14;
+  const cx = (a[0] + b[0]) / 2 + (dy * bow) / k;
+  const cy = (a[1] + b[1]) / 2 - dx * bow;
+  const n = Math.min(32, Math.max(8, Math.round(len * 40)));
+  const out: LngLat[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = i / n;
+    const u = 1 - t;
+    out.push([u * u * a[0] + 2 * u * t * cx + t * t * b[0], u * u * a[1] + 2 * u * t * cy + t * t * b[1]]);
+  }
+  return out;
 }
 
 /** point at fraction u (0..1) of a segment's length */
@@ -142,7 +168,8 @@ const pitchFor = (zoom: number) => clamp(lerp(38, 62, (zoom - 4) / 5), 38, 62);
 
 /**
  * A deterministic, flyTo-like camera for progress t: settle close at stops,
- * pull back to frame long legs, and lean gently into the direction of travel.
+ * ease back a little on long legs (following the traveller rather than
+ * framing the whole leg), and lean gently into the direction of travel.
  */
 export function cameraAt(j: Journey, t: number): CameraPose {
   const path = pathOf(j);
@@ -150,7 +177,8 @@ export function cameraAt(j: Journey, t: number): CameraPose {
   const leg = path.segments[seg];
   const zA = path.stopZoom[seg];
   const zB = path.stopZoom[seg + 1];
-  const zMid = Math.min(leg.travelZoom, zA, zB);
+  // pull back a little on a long leg, never so far the land under the traveller is lost
+  const zMid = Math.max(Math.min(leg.travelZoom, zA, zB), Math.min(zA, zB) - 0.9);
   let zoom: number;
   if (s < 0.35) zoom = lerp(zA, zMid, smooth(s / 0.35));
   else if (s > 0.65) zoom = lerp(zMid, zB, smooth((s - 0.65) / 0.35));
@@ -173,7 +201,7 @@ export function stopPose(j: Journey, index: number): CameraPose {
 
 /** seconds the playback spends travelling a leg */
 export function legSeconds(km: number): number {
-  return clamp(1.6 + Math.log2(1 + km / 40) * 0.95, 2.2, 6.5);
+  return clamp(3.2 + Math.log2(1 + km / 40) * 1.6, 4, 11);
 }
 
 export function yearAt(j: Journey, t: number): number {

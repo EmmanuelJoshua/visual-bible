@@ -1,0 +1,424 @@
+<!doctype html>
+<!--
+  Visual Bible: "Step into the story", the 30-second campaign film (HyperFrames composition).
+  Vertical 1080×1920 master. ../video-wide/index.html (1920×1080) is generated from
+  this file by make-wide.mjs, so edit here and re-run `npm run compose`.
+  All footage is captured from the app by ../capture/shots.mjs.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1920" />
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "Manrope"; font-weight: 200 800; src: url(assets/fonts/manrope-latin.woff2) format("woff2"); }
+      @font-face { font-family: "Noto Sans Hebrew"; font-weight: 700; src: url(assets/fonts/noto-sans-hebrew-700.woff2) format("woff2"); }
+      @font-face { font-family: "Inter"; font-weight: 100 900; src: url(assets/fonts/inter-latin.woff2) format("woff2"); }
+      :root {
+        --ink: #0b0907;
+        --cream: #f4efe6;
+        --gold: #d9b45a;
+        --red: #c8372d;
+        --sand: #e4cfa6;
+      }
+      html, body { margin: 0; background: var(--ink); }
+      #root {
+        position: relative;
+        overflow: hidden;
+        background: var(--ink);
+        font-family: "Inter", system-ui, sans-serif;
+        color: var(--cream);
+        isolation: isolate;
+      }
+      .v { width: 1080px; height: 1920px; }
+      .w { width: 1920px; height: 1080px; }
+      .clip { position: absolute; inset: 0; }
+      /* placed boxes: each layout below sets only the edges it uses */
+      .clip.type, .clip.tag, .clip.hud { inset: auto; }
+
+      /* footage --------------------------------------------------------- */
+      .shot { position: absolute; inset: 0; overflow: hidden; }
+      .shot .frame { position: absolute; inset: 0; will-change: transform; }
+      .shot video { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .scrim { position: absolute; inset: 0; pointer-events: none; }
+      .v .scrim { background: linear-gradient(180deg, rgba(11,9,7,.72) 0%, rgba(11,9,7,.30) 26%, rgba(11,9,7,0) 42%, rgba(11,9,7,0) 70%, rgba(11,9,7,.55) 100%); }
+      .w .scrim { background: linear-gradient(90deg, rgba(11,9,7,.70) 0%, rgba(11,9,7,.25) 38%, rgba(11,9,7,0) 60%), linear-gradient(0deg, rgba(11,9,7,.45) 0%, rgba(11,9,7,0) 40%); }
+
+      /* kinetic type --------------------------------------------------- */
+      .type { position: absolute; z-index: 20; }
+      .v .type { left: 84px; right: 84px; top: 250px; }
+      .w .type { left: 120px; bottom: 150px; width: 1100px; }
+      .w #t8 { top: 170px; bottom: auto; }
+      .w #s-build video { object-position: 0% 50%; }
+      .headline {
+        font-family: "Manrope", sans-serif; font-weight: 800;
+        line-height: 0.98; letter-spacing: -0.025em; margin: 0;
+        text-shadow: 0 6px 40px rgba(0,0,0,.35);
+      }
+      .v .headline { font-size: 118px; }
+      .w .headline { font-size: 104px; }
+      .line { display: block; overflow: hidden; padding: 0.04em 0 0.08em; margin-bottom: -0.1em; }
+      .line > .w8 { display: inline-block; will-change: transform; }
+      .gold { color: var(--gold); }
+      .red { color: var(--red); }
+      .kicker {
+        font-family: "Inter", sans-serif; font-weight: 600; text-transform: uppercase;
+        letter-spacing: 0.32em; color: var(--gold); margin-bottom: 28px; display: flex; align-items: center; gap: 18px;
+      }
+      .v .kicker { font-size: 26px; }
+      .w .kicker { font-size: 22px; }
+      .kicker::before { content: ""; width: 64px; height: 2px; background: currentColor; display: block; }
+      .sub {
+        font-family: "Inter", sans-serif; font-weight: 500; color: rgba(244,239,230,.86); margin-top: 26px;
+      }
+      .v .sub { font-size: 38px; }
+      .w .sub { font-size: 32px; }
+
+      /* place tag, like the app's instrument readout ------------------- */
+      .tag { position: absolute; z-index: 21; display: flex; flex-direction: column; gap: 10px; }
+      .v .tag { left: 84px; bottom: 470px; }
+      .w .tag { right: 110px; top: 110px; align-items: flex-end; }
+      .tag .name {
+        font-family: "Manrope", sans-serif; font-weight: 800; letter-spacing: 0.22em; text-transform: uppercase;
+        background: rgba(11,9,7,.62); border: 1px solid rgba(217,180,90,.55); padding: 14px 22px 12px; border-radius: 4px;
+        display: inline-flex; align-items: center; gap: 16px; backdrop-filter: blur(6px);
+      }
+      .v .tag .name { font-size: 30px; }
+      .w .tag .name { font-size: 26px; }
+      .tag .name i { width: 14px; height: 14px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 0 6px rgba(217,180,90,.25); display: block; }
+      .tag .coords { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.18em; color: rgba(244,239,230,.7); }
+      .v .tag .coords { font-size: 22px; padding-left: 4px; }
+      .w .tag .coords { font-size: 18px; }
+
+      /* the dive's distance readout ------------------------------------- */
+      .hud { position: absolute; z-index: 21; font-family: ui-monospace, "SF Mono", Menlo, monospace; color: rgba(244,239,230,.82); letter-spacing: 0.2em; }
+      .v .hud { left: 84px; bottom: 470px; font-size: 26px; }
+      .w .hud { right: 110px; top: 110px; font-size: 22px; text-align: right; }
+      .hud b { display: block; font-family: "Manrope", sans-serif; font-weight: 800; letter-spacing: 0.02em; color: var(--cream); margin-top: 8px; font-variant-numeric: tabular-nums; }
+      .v .hud b { font-size: 84px; }
+      .w .hud b { font-size: 72px; }
+      .hud .bar { height: 3px; background: rgba(244,239,230,.18); margin-top: 18px; position: relative; overflow: hidden; }
+      .v .hud .bar { width: 420px; }
+      .w .hud .bar { width: 360px; margin-left: auto; }
+      .hud .bar span { position: absolute; inset: 0; background: var(--gold); transform-origin: left; }
+
+      /* the year rewinding between Antioch and Babylon ------------------ */
+      .era { position: absolute; z-index: 22; display: grid; place-items: center; inset: 0; pointer-events: none; }
+      .era .year {
+        font-family: "Manrope", sans-serif; font-weight: 800; letter-spacing: -0.03em; color: var(--cream);
+        font-variant-numeric: tabular-nums; text-shadow: 0 10px 60px rgba(0,0,0,.6);
+      }
+      .v .era .year { font-size: 220px; }
+      .w .era .year { font-size: 240px; }
+      .era .rule { position: absolute; height: 2px; background: var(--gold); left: 0; right: 0; top: 50%; transform-origin: left; }
+
+      /* journey chips --------------------------------------------------- */
+      .chips { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 34px; }
+      .chip {
+        font-family: "Inter", sans-serif; font-weight: 600; border-radius: 999px; padding: 12px 24px 12px 20px;
+        background: rgba(11,9,7,.6); border: 1px solid rgba(244,239,230,.25); display: inline-flex; align-items: center; gap: 12px;
+      }
+      .v .chip { font-size: 30px; }
+      .w .chip { font-size: 26px; }
+      .chip i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+
+      /* transitions ----------------------------------------------------- */
+      .sweep { position: absolute; z-index: 30; inset: -20%; pointer-events: none; opacity: 0;
+        background: linear-gradient(105deg, rgba(217,180,90,0) 35%, rgba(255,236,190,.95) 50%, rgba(217,180,90,0) 65%); }
+      .flash { position: absolute; z-index: 31; inset: 0; background: var(--cream); opacity: 0; pointer-events: none; }
+
+      /* brand bug and finish ------------------------------------------- */
+      .bug { position: absolute; z-index: 40; display: flex; align-items: baseline; gap: 12px; font-family: "Manrope", sans-serif; font-weight: 800; letter-spacing: 0.06em; }
+      .v .bug { left: 84px; top: 120px; font-size: 30px; }
+      .w .bug { left: 120px; top: 84px; font-size: 26px; }
+      .bug .he { font-family: "Noto Sans Hebrew", sans-serif; color: var(--red); font-weight: 700; letter-spacing: 0; font-size: 0.8em; }
+      .grain { position: absolute; inset: -50%; z-index: 50; pointer-events: none; opacity: .09; mix-blend-mode: overlay;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+      .vignette { position: absolute; inset: 0; z-index: 49; pointer-events: none; background: radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.45) 100%); }
+
+      /* end card -------------------------------------------------------- */
+      #endcard { z-index: 35; }
+      #endbg { z-index: 34; background: radial-gradient(ellipse at 50% 40%, #2a2018 0%, #0b0907 72%); }
+      #endbg .frame { opacity: .32; filter: blur(14px) saturate(1.1); }
+      #endbg video { transform: scale(1.1); }
+      #endcard .inner { position: absolute; display: flex; flex-direction: column; }
+      .v #endcard .inner { left: 0; right: 0; top: 230px; align-items: center; text-align: center; }
+      .w #endcard .inner { left: 120px; top: 0; bottom: 0; justify-content: center; width: 820px; }
+      .logo { font-family: "Manrope", sans-serif; font-weight: 800; letter-spacing: 0.04em; line-height: 1; display: flex; align-items: baseline; gap: 22px; }
+      .v .logo { font-size: 104px; flex-direction: column; align-items: center; gap: 18px; }
+      .w .logo { font-size: 92px; flex-direction: column; align-items: flex-start; gap: 16px; white-space: nowrap; }
+      .logo .he { font-family: "Noto Sans Hebrew", sans-serif; color: var(--red); font-weight: 700; letter-spacing: 0; font-size: 0.55em; }
+      .tagline { font-family: "Inter", sans-serif; font-weight: 500; color: rgba(244,239,230,.82); margin-top: 30px; }
+      .v .tagline { font-size: 40px; }
+      .w .tagline { font-size: 36px; }
+      .cta { margin-top: 46px; display: inline-flex; align-items: center; gap: 16px; background: var(--gold); color: var(--ink);
+        font-family: "Manrope", sans-serif; font-weight: 800; border-radius: 999px; letter-spacing: 0.02em; }
+      .v .cta { font-size: 36px; padding: 24px 44px; }
+      .w .cta { font-size: 30px; padding: 20px 38px; align-self: flex-start; }
+      .cta svg { width: 1em; height: 1em; }
+      .features { font-family: ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.22em; text-transform: uppercase; color: rgba(244,239,230,.55); margin-top: 34px; }
+      .v .features { font-size: 20px; }
+      .w .features { font-size: 17px; }
+      .device { position: absolute; overflow: hidden; background: #000; box-shadow: 0 40px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.12); }
+      .device img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+      .v .device { width: 470px; height: 1018px; left: 305px; top: 1010px; border-radius: 64px; border: 12px solid #16120e; }
+      .w .device { width: 900px; height: 548px; right: 110px; top: 266px; border-radius: 14px; border-top: 36px solid #1d1813; }
+      .w .device::before { content: ""; position: absolute; top: -24px; left: 18px; width: 70px; height: 12px;
+        background: radial-gradient(circle at 6px 6px, #e0574a 5px, transparent 6px), radial-gradient(circle at 30px 6px, #e3b341 5px, transparent 6px), radial-gradient(circle at 54px 6px, #4fb35e 5px, transparent 6px); }
+    </style>
+  </head>
+  <body>
+    <div id="root" class="v" data-composition-id="film" data-start="0" data-duration="30" data-fps="30" data-width="1080" data-height="1920">
+
+      <!-- 0–4: the diorama on its plinth; 4–12.4: one dive into Galilee (the two shots join seamlessly) -->
+      <div id="s-plinth" class="shot">
+        <div class="frame"><video id="v-plinth" src="assets/footage/plinth.mp4" data-start="0" data-duration="4.05" data-media-start="0.45" data-track-index="0" muted playsinline></video></div>
+      </div>
+      <div id="s-dive" class="shot">
+        <div class="frame"><video id="v-dive" src="assets/footage/dive.mp4" data-start="4" data-duration="8.4" data-media-start="0" data-track-index="1" muted playsinline></video></div>
+      </div>
+      <div id="s-antioch" class="shot">
+        <div class="frame"><video id="v-antioch" src="assets/footage/antioch.mp4" data-start="11.85" data-duration="4.5" data-media-start="0" data-track-index="0" muted playsinline></video></div>
+      </div>
+      <div id="s-babylon" class="shot">
+        <div class="frame"><video id="v-babylon" src="assets/footage/babylon.mp4" data-start="15.8" data-duration="4.15" data-media-start="0.1" data-track-index="1" muted playsinline></video></div>
+      </div>
+      <div id="s-journey" class="shot">
+        <div class="frame"><video id="v-journey" src="assets/footage/journey.mp4" data-start="19.6" data-duration="4.55" data-media-start="1.0" data-track-index="0" muted playsinline></video></div>
+      </div>
+      <div id="s-build" class="shot">
+        <div class="frame"><video id="v-build" src="assets/footage/build-v.mp4" data-start="23.7" data-duration="3.9" data-media-start="0.1" data-playback-rate="2" data-track-index="1" muted playsinline></video></div>
+      </div>
+      <div id="dim" class="clip" data-start="15.7" data-duration="1.3" data-track-index="2" style="z-index:9;background:#0b0907;opacity:0"></div>
+      <div id="scrim" class="scrim clip" data-start="0" data-duration="27.6" data-track-index="2" style="z-index:10"></div>
+
+      <!-- type --------------------------------------------------------------->
+      <div id="t1" class="type clip" data-start="0" data-duration="2.1" data-track-index="3">
+        <h1 class="headline"><span class="line">You’ve read</span><span class="line">the story.</span></h1>
+      </div>
+      <div id="t2" class="type clip" data-start="1.95" data-duration="2.75" data-track-index="4">
+        <h1 class="headline"><span class="line">Now walk</span><span class="line gold">into it.</span></h1>
+      </div>
+      <div id="t3" class="type clip" data-start="4.8" data-duration="2.75" data-track-index="3">
+        <div class="kicker">One world · one timeline</div>
+        <h1 class="headline"><span class="line">Zoom from</span><span class="line">the map…</span></h1>
+      </div>
+      <div id="hud" class="hud clip" data-start="4.1" data-duration="5.3" data-track-index="5">
+        <div>CAMERA DISTANCE</div><b id="dist">5,350 km</b><div class="bar"><span id="distbar"></span></div>
+      </div>
+      <div id="t4" class="type clip" data-start="8.2" data-duration="3.75" data-track-index="4">
+        <h1 class="headline"><span class="line">…into</span><span class="line gold">the land.</span></h1>
+        <div class="sub">Trees, hills and water, streamed as you zoom.</div>
+      </div>
+      <div id="tag-galilee" class="tag clip" data-start="9.4" data-duration="2.55" data-track-index="5">
+        <div class="name"><i></i>Galilee</div><div class="coords">32.78° N · 35.47° E</div>
+      </div>
+      <div id="t5" class="type clip" data-start="12.2" data-duration="3.9" data-track-index="3">
+        <div class="kicker">Rebuilt from history</div>
+        <h1 class="headline"><span class="line"><span class="gold">160+</span> cities</span><span class="line">you can visit.</span></h1>
+      </div>
+      <div id="tag-antioch" class="tag clip" data-start="12.7" data-duration="3.4" data-track-index="5">
+        <div class="name"><i></i>Antioch · AD 45</div><div class="coords">36.20° N · 36.16° E</div>
+      </div>
+      <div id="era" class="era clip" data-start="15.75" data-duration="1.25" data-track-index="6">
+        <div class="rule" id="era-rule"></div><div class="year" id="year">AD 45</div>
+      </div>
+      <div id="t6" class="type clip" data-start="16.7" data-duration="3.1" data-track-index="4">
+        <div class="kicker">Drag the ages</div>
+        <h1 class="headline"><span class="line">Watch them</span><span class="line gold">rise and fall.</span></h1>
+      </div>
+      <div id="tag-babylon" class="tag clip" data-start="17.0" data-duration="2.8" data-track-index="5">
+        <div class="name"><i></i>Babylon · 560 BC</div><div class="coords">32.54° N · 44.42° E</div>
+      </div>
+      <div id="t7" class="type clip" data-start="20.0" data-duration="3.85" data-track-index="3">
+        <div class="kicker">13 journeys</div>
+        <h1 class="headline"><span class="line">Follow</span><span class="line gold">the journeys.</span></h1>
+        <div class="chips">
+          <span class="chip"><i style="background:#e0a050"></i>Abraham</span>
+          <span class="chip"><i style="background:#d0584a"></i>The Exodus</span>
+          <span class="chip"><i style="background:#8fb0d8"></i>Jesus’ ministry</span>
+          <span class="chip"><i style="background:#d9b45a"></i>Paul’s voyages</span>
+        </div>
+      </div>
+      <div id="t8" class="type clip" data-start="24.1" data-duration="3.35" data-track-index="4">
+        <div class="kicker" style="color:var(--red)">Step by step · verse by verse</div>
+        <h1 class="headline" style="color:#1a140f;text-shadow:none"><span class="line">Build it</span><span class="line red">as written.</span></h1>
+      </div>
+
+      <!-- transitions ------------------------------------------------------->
+      <div id="sweep" class="sweep clip" data-start="11.5" data-duration="1.1" data-track-index="7"></div>
+      <div id="flash" class="flash clip" data-start="0" data-duration="30" data-track-index="8"></div>
+
+      <!-- end card ---------------------------------------------------------->
+      <div id="endbg" class="shot"><div class="frame"><video id="v-endbg" src="assets/footage/plinth.mp4" data-start="27.25" data-duration="2.75" data-media-start="1.0" data-track-index="9" muted playsinline></video></div></div>
+      <div id="endcard" class="clip" data-start="27.25" data-duration="2.75" data-track-index="9">
+        <div class="device" id="device"><img src="assets/stills/explore-mobile.png" alt="" /></div>
+        <div class="inner">
+          <div class="logo" id="logo"><span>VISUAL BIBLE</span><span class="he">תולדות</span></div>
+          <div class="tagline" id="tagline">The biblical world, in 3D.</div>
+          <div class="cta" id="cta">Explore free in your browser
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 8h10M9 4l4 4-4 4"/></svg></div>
+          <div class="features" id="features">Map · Cities · Journeys · Builds · Story mode</div>
+        </div>
+      </div>
+
+      <div id="bug" class="bug clip" data-start="0" data-duration="27.4" data-track-index="10"><span>VISUAL BIBLE</span><span class="he">תולדות</span></div>
+      <div id="vignette" class="vignette clip" data-start="0" data-duration="30" data-track-index="11"></div>
+      <div id="grain" class="grain clip" data-start="0" data-duration="30" data-track-index="12"></div>
+    </div>
+
+    <script>
+      (() => {
+        const root = document.getElementById("root");
+        const wide = root.classList.contains("w");
+        // split each headline line into words so they can rise in one by one
+        document.querySelectorAll(".line").forEach((line) => {
+          const nodes = [...line.childNodes];
+          line.textContent = "";
+          nodes.forEach((n) => {
+            if (n.nodeType === 3) {
+              n.textContent.split(/(\s+)/).forEach((part) => {
+                if (!part) return;
+                if (/^\s+$/.test(part)) return line.append(" ");
+                const s = document.createElement("span");
+                s.className = "w8";
+                s.textContent = part;
+                line.append(s);
+              });
+            } else {
+              n.classList.add("w8");
+              line.append(n);
+            }
+          });
+        });
+
+        const tl = gsap.timeline({ paused: true, defaults: { ease: "power3.out" } });
+        const words = (id) => document.querySelectorAll("#" + id + " .w8");
+
+        /** a headline in: words rise through their line masks; out: they lift away */
+        const typeIn = (id, at, opts = {}) => {
+          tl.fromTo(words(id), { yPercent: 115, rotate: 4 }, { yPercent: 0, rotate: 0, duration: 0.7, stagger: 0.07, ease: "expo.out" }, at);
+          const extra = document.querySelectorAll(["kicker", "sub", "chip"].map((c) => "#" + id + " ." + c).join(", "));
+          if (extra.length) tl.fromTo(extra, { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6, stagger: 0.09 }, at + (opts.extraDelay ?? 0.15));
+        };
+        const typeOut = (id, at) => {
+          tl.to(words(id), { yPercent: -115, duration: 0.42, stagger: 0.035, ease: "power2.in" }, at);
+          const extra = document.querySelectorAll(["kicker", "sub", "chip"].map((c) => "#" + id + " ." + c).join(", "));
+          if (extra.length) tl.to(extra, { opacity: 0, y: -16, duration: 0.35, ease: "power2.in" }, at);
+        };
+        const tagIn = (id, at) => {
+          tl.fromTo("#" + id + " .name", { opacity: 0, x: wide ? 40 : -40, clipPath: "inset(0 100% 0 0)" }, { opacity: 1, x: 0, clipPath: "inset(0 0% 0 0)", duration: 0.7, ease: "expo.out" }, at);
+          tl.fromTo("#" + id + " .coords", { opacity: 0 }, { opacity: 1, duration: 0.5 }, at + 0.25);
+        };
+        const tagOut = (id, at) => tl.to("#" + id, { opacity: 0, duration: 0.3 }, at);
+
+        /* 0–4: the plinth, a slow push; the hook */
+        tl.fromTo("#s-plinth .frame", { scale: 1.08 }, { scale: 1.0, duration: 4.05, ease: "none" }, 0);
+        tl.fromTo("#bug", { opacity: 0 }, { opacity: 0.9, duration: 0.8 }, 0.2);
+        typeIn("t1", 0.3);
+        typeOut("t1", 1.65);
+        typeIn("t2", 2.05);
+        typeOut("t2", 4.2);
+
+        /* 4–12.4: the dive. The readout follows the capture's own camera path:
+           zoom 3.75 → 15.2 eased over the first 5 s, distance = 72000 / 2^zoom km */
+        typeIn("t3", 4.9);
+        typeOut("t3", 7.15);
+        const ease3 = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+        const dist = document.getElementById("dist");
+        const probe = { t: 0 };
+        tl.fromTo("#hud", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.5 }, 4.15);
+        tl.fromTo(probe, { t: 0 }, {
+          t: 1, duration: 5.0, ease: "none",
+          onUpdate: () => {
+            const z = 3.75 + (15.2 - 3.75) * ease3(probe.t);
+            const km = 72000 / Math.pow(2, z);
+            dist.textContent = km >= 100 ? `${Math.round(km).toLocaleString("en-US")} km` : km >= 10 ? `${km.toFixed(0)} km` : `${km.toFixed(1)} km`;
+          },
+        }, 4.0);
+        tl.fromTo("#distbar", { scaleX: 0 }, { scaleX: 1, duration: 5.0, ease: "power2.in" }, 4.0);
+        tl.to("#hud", { opacity: 0, duration: 0.35 }, 9.0);
+        typeIn("t4", 8.3);
+        tagIn("tag-galilee", 9.45);
+        typeOut("t4", 11.4);
+        tagOut("tag-galilee", 11.55);
+
+        /* 12: a gold light sweep into Antioch */
+        tl.fromTo("#sweep", { xPercent: -60 }, { xPercent: 60, duration: 1.0, ease: "power2.inOut" }, 11.5);
+        tl.fromTo("#sweep", { opacity: 0 }, { opacity: 1, duration: 0.3 }, 11.5);
+        tl.to("#sweep", { opacity: 0, duration: 0.3 }, 12.2);
+        tl.fromTo("#s-antioch", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power1.inOut" }, 11.85);
+        tl.fromTo("#s-antioch .frame", { scale: 1.16 }, { scale: 1.0, duration: 3.95, ease: "power2.out" }, 11.85);
+        tl.to("#s-dive .frame", { scale: 1.12, duration: 0.6, ease: "power2.in" }, 11.75);
+        typeIn("t5", 12.3);
+        tagIn("tag-antioch", 12.75);
+        typeOut("t5", 15.55);
+        tagOut("tag-antioch", 15.75);
+
+        /* 16: the year rewinds, AD 45 → 560 BC, and Babylon slides in */
+        const year = document.getElementById("year");
+        const yr = { y: 45 };
+        tl.fromTo("#era", { opacity: 0 }, { opacity: 1, duration: 0.2 }, 15.75);
+        tl.fromTo("#era-rule", { scaleX: 0 }, { scaleX: 1, duration: 0.9, ease: "power2.inOut" }, 15.75);
+        tl.fromTo(yr, { y: 45 }, {
+          y: -560, duration: 0.85, ease: "power2.inOut",
+          onUpdate: () => { const v = Math.round(yr.y); year.textContent = v > 0 ? `AD ${v}` : `${Math.max(1, -v)} BC`; },
+        }, 15.8);
+        tl.fromTo("#year", { scale: 0.92 }, { scale: 1.04, duration: 1.1, ease: "none" }, 15.8);
+        tl.to("#era", { opacity: 0, duration: 0.3 }, 16.7);
+        tl.fromTo("#s-babylon", wide ? { xPercent: 100 } : { yPercent: 100 }, wide ? { xPercent: 0, duration: 0.7, ease: "expo.inOut" } : { yPercent: 0, duration: 0.55, ease: "expo.inOut" }, 15.8);
+        tl.fromTo("#s-babylon .frame", { scale: 1.12 }, { scale: 1.0, duration: 3.75, ease: "power2.out" }, 15.8);
+        tl.to("#s-antioch .frame", { scale: 1.06, duration: 0.5, ease: "power2.in" }, 15.8);
+        tl.fromTo("#dim", { opacity: 0 }, { opacity: 0.55, duration: 0.35, ease: "power1.in" }, 15.75);
+        tl.to("#dim", { opacity: 0, duration: 0.5, ease: "power1.out" }, 16.45);
+        typeIn("t6", 16.75);
+        tagIn("tag-babylon", 17.05);
+        typeOut("t6", 19.35);
+        tagOut("tag-babylon", 19.45);
+
+        /* 19.6: push through into the journey */
+        tl.to("#s-babylon .frame", { scale: 1.35, duration: 0.5, ease: "power3.in" }, 19.55);
+        tl.to("#s-babylon", { opacity: 0, duration: 0.3, ease: "power1.in" }, 19.75);
+        tl.fromTo("#s-journey .frame", { scale: 1.25 }, { scale: 1.0, duration: 0.8, ease: "expo.out" }, 19.6);
+        tl.fromTo("#s-journey", { opacity: 0 }, { opacity: 1, duration: 0.3, ease: "power1.out" }, 19.6);
+        typeIn("t7", 20.05);
+        typeOut("t7", 23.45);
+
+        /* 23.7: an iris opens on the build */
+        tl.fromTo("#s-build", { clipPath: "circle(0% at 50% 55%)" }, { clipPath: "circle(80% at 50% 55%)", duration: 0.75, ease: "expo.inOut" }, 23.7);
+        tl.to("#s-journey .frame", { scale: 1.1, duration: 0.75, ease: "power2.in" }, 23.7);
+        tl.to("#scrim", { opacity: 0, duration: 0.4 }, 23.9);
+        tl.to("#bug", { color: "#1a140f", duration: 0.3 }, 23.9);
+        typeIn("t8", 24.2);
+        typeOut("t8", 27.0);
+
+        /* 27.25: the end card */
+        tl.fromTo("#flash", { opacity: 0 }, { opacity: 0.85, duration: 0.12, ease: "power1.in" }, 27.18);
+        tl.fromTo("#endbg", { opacity: 0 }, { opacity: 1, duration: 0.1 }, 27.22);
+        tl.to("#flash", { opacity: 0, duration: 0.5, ease: "power2.out" }, 27.3);
+        tl.to("#bug", { opacity: 0, duration: 0.2 }, 27.2);
+        tl.fromTo("#logo", { opacity: 0, y: 40, scale: 1.12 }, { opacity: 1, y: 0, scale: 1, duration: 0.9, ease: "expo.out" }, 27.35);
+        tl.fromTo("#tagline", { opacity: 0, y: 24 }, { opacity: 1, y: 0, duration: 0.6 }, 27.6);
+        tl.fromTo("#cta", { opacity: 0, scale: 0.85 }, { opacity: 1, scale: 1, duration: 0.6, ease: "back.out(2)" }, 27.8);
+        tl.fromTo("#features", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 28.05);
+        tl.fromTo("#device", wide ? { opacity: 0, x: 120, rotateY: -14 } : { opacity: 0, y: 260 }, wide ? { opacity: 1, x: 0, rotateY: 0, duration: 1.1, ease: "expo.out" } : { opacity: 1, y: 0, duration: 1.1, ease: "expo.out" }, 27.45);
+        tl.fromTo("#cta", { boxShadow: "0 0 0 0 rgba(217,180,90,.6)" }, { boxShadow: "0 0 0 26px rgba(217,180,90,0)", duration: 1.0, ease: "power2.out" }, 28.6);
+
+        /* film grain: a new offset every frame, hashed from the frame number so seeks stay exact */
+        const grain = document.getElementById("grain");
+        const g = { f: 0 };
+        tl.fromTo(g, { f: 0 }, {
+          f: 900, duration: 30, ease: "none",
+          onUpdate: () => {
+            const n = Math.floor(g.f);
+            const hx = Math.sin(n * 12.9898) * 43758.5453, hy = Math.sin(n * 78.233) * 12543.1234;
+            grain.style.transform = `translate(${((hx - Math.floor(hx)) * 240).toFixed(1)}px, ${((hy - Math.floor(hy)) * 240).toFixed(1)}px)`;
+          },
+        }, 0);
+
+        window.__timelines = window.__timelines || {};
+        window.__timelines.film = tl;
+      })();
+    </script>
+  </body>
+</html>

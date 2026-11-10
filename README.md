@@ -99,6 +99,20 @@ orchards in rows round the towns. They are chosen by the painting's colour,
 the slope, the height and the latitude, the same every visit, and drawn
 larger than life (as a model railway's are).
 
+Down there the world is lit as the open air is: the sun's shadow map is
+fitted closely round what the camera looks at, so trees, houses and hills
+cast their shadows; the sky fills the shade with blue and the ground bounces
+warm; haze thickens toward the horizon. The ground wears scanned materials
+from Poly Haven (`npm run build:diorama -- ground` packs `ground.webp`: rock,
+scree, dry scrub, grass, sand and soil, each with its relief), chosen by the
+slope and the painting's colour, tinted to each place's own hue and bumped
+by their relief. Lakes lie in beds sunk under their own levels. The frame is
+drawn at fewer pixels if the machine can't keep up.
+
+`node scripts/diorama-shot.mjs` takes headless screenshots of the map for
+checking it (the page opened with `?debug` hands the stage to the script);
+`node scripts/serve-export.mjs` serves the static export.
+
 The cities (`cities.ts`, from `src/world/towns.ts`) are some 120 places
 from Ur and Jericho to Rome, each with its years, its building style
 (Canaanite stone, Mesopotamian and Egyptian mudbrick, Greek and Roman
@@ -111,7 +125,9 @@ aqueducts. A city stands only in its years (it follows the timeline), and
 grows or shrinks by phase (Jerusalem from David's ridge to Herod's three
 walls). Close up it is at its true size, the blocks near the camera opened
 into houses; from further off it grows into a miniature of itself, so
-Antioch still reads from a hundred kilometres. Down there the studio gives way to an
+Antioch still reads from a hundred kilometres. Their walls are drawn as
+masonry: courses and joints, every block its own shade, small windows,
+weather and dirt, and no two houses quite the same. Down there the studio gives way to an
 open sky. The build models grow from diorama size to their true size as the
 camera comes down to them, with the ground cleared round them.
 

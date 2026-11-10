@@ -37,6 +37,9 @@ export function modelY(h: number, sea: boolean, e: number, p: ModelParams) {
   return (eased * e) / 1000;
 }
 
+/** the ground's materials: the layers of public/diorama/ground.webp */
+export const GROUND_LAYERS = 6;
+
 export const MODEL_GLSL = /* glsl */ `
   uniform float uE;
   uniform vec4 uModel; // vertical, seaVertical, seaFloor, peakEase
@@ -179,8 +182,11 @@ export class Terrain {
     uE: { value: 7 },
     uModel: { value: new THREE.Vector4() },
     uNear: { value: new THREE.Vector2(140, 420) },
-    uGroundA: { value: null as THREE.Texture | null },
-    uGroundB: { value: null as THREE.Texture | null },
+    /** the ground's materials, a layer each (colour, relief in alpha): GROUND in scripts/build-diorama.py */
+    uGround: { value: null as THREE.DataArrayTexture | null },
+    /** each layer's mean colour, and the km it tiles at */
+    uGroundMean: { value: Array.from({ length: GROUND_LAYERS }, () => new THREE.Vector3(0.2, 0.2, 0.2)) },
+    uGroundTile: { value: new Array<number>(GROUND_LAYERS).fill(0.03) },
     uTime: { value: 0 },
     /** distance haze: colour, and the camera's distance to what it looks at */
     uHaze: { value: new THREE.Color(0.72, 0.66, 0.58) },
@@ -193,7 +199,7 @@ export class Terrain {
   pending = 0;
   private roots: Tile[] = [];
   private all = new Map<string, Tile>();
-  private materials = new Map<string, THREE.MeshStandardMaterial>();
+  private materials = new Map<string, THREE.MeshLambertMaterial>();
   private depthMaterial: THREE.MeshDepthMaterial | null = null;
   private maps = new Map<string, ChunkMaps>();
   private heights = new HeightSource();
@@ -208,6 +214,8 @@ export class Terrain {
     private toWorld: (lng: number, lat: number) => { x: number; z: number },
     private fallback: (lng: number, lat: number) => number,
     private isSea: (lng: number, lat: number) => boolean,
+    /** a lake's level where there is one (metres), else null: its bed is dug under it */
+    private lakeLevel: (lng: number, lat: number) => number | null = () => null,
   ) {
     this.uniforms.uModel.value.set(params.vertical, params.seaVertical, params.seaFloor, params.peakEase);
     for (const c of chunks) {
@@ -245,7 +253,7 @@ export class Terrain {
     if (m) this.applyMaps(m, maps);
   }
 
-  private applyMaps(m: THREE.MeshStandardMaterial, maps: ChunkMaps) {
+  private applyMaps(m: THREE.MeshLambertMaterial, maps: ChunkMaps) {
     const u = m.userData.uniforms as Record<string, THREE.IUniform> | undefined;
     m.userData.maps = maps;
     if (!u) return;
@@ -347,6 +355,17 @@ export class Terrain {
       const z = Math.max(3, Math.min(12, Math.ceil(Math.log2((40075 * Math.cos((lat * Math.PI) / 180)) / (256 * spacingKm)))));
       const grid = new Float32Array(n * n);
       await this.heights.sample(z, lngs, lats, grid, this.fallback);
+      // the elevation data has a lake's surface, not its bed: sink the bed, or the water lies under the land
+      for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+          const level = this.lakeLevel(lngs[i], lats[j]);
+          if (level === null) continue;
+          // only where the data is at the water's level (its outline takes in some shore, which stays land),
+          // and by a bank, not a step
+          const over = grid[j * n + i] - level;
+          if (over < 1) grid[j * n + i] = Math.min(grid[j * n + i], level - 2 + 3 * Math.max(0, over));
+        }
+      }
       t.grid = grid;
       this.build(t);
       t.state = "ready";
@@ -389,7 +408,9 @@ export class Terrain {
         const w = this.toWorld(lng, lat);
         pos[k * 3] = w.x;
         pos[k * 3 + 2] = w.z;
-        const s = h < 1 && this.isSea(lng, lat) ? 1 : 0;
+        // sea floor wherever the ground is at or under sea level near the sea (holes in the fine heights
+        // read 0 m, so they count); low ground inland, like the Dead Sea's basin, stays land
+        const s = h < 0.5 && this.isSea(lng, lat) ? 1 : 0;
         hm[k] = h;
         sea[k] = s;
         // slopes in metres per km of the map, east and south
@@ -458,7 +479,8 @@ export class Terrain {
   private material(chunkId: string) {
     const hit = this.materials.get(chunkId);
     if (hit) return hit;
-    const m = new THREE.MeshStandardMaterial({ roughness: 0.95, metalness: 0, envMapIntensity: 0.15 });
+    // matte: bare ground has no shine worth its cost over a whole screen
+    const m = new THREE.MeshLambertMaterial();
     const shared = this.uniforms;
     m.onBeforeCompile = (shader) => {
       const own = {
@@ -506,8 +528,9 @@ export class Terrain {
           uniform vec4 uRenderX;
           uniform sampler2D uAlbedo;
           uniform vec4 uAlbedoX;
-          uniform sampler2D uGroundA;
-          uniform sampler2D uGroundB;
+          uniform highp sampler2DArray uGround;
+          uniform vec3 uGroundMean[${GROUND_LAYERS}];
+          uniform float uGroundTile[${GROUND_LAYERS}];
           uniform vec2 uNear;
           uniform float uE;
           uniform vec3 uHaze;
@@ -531,23 +554,36 @@ export class Terrain {
             vec2 w = f * f * (3.0 - 2.0 * f);
             return mix(mix(h2(i), h2(i + vec2(1.0, 0.0)), w.x), mix(h2(i + vec2(0.0, 1.0)), h2(i + vec2(1.0, 1.0)), w.x), w.y);
           }
-          vec4 groundA(vec2 p) {
-            // two scales, the second turned, so the repeat never lines up
-            vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.31 + 0.17;
-            return mix(texture2D(uGroundA, p), texture2D(uGroundA, q), 0.45);
-          }
-          float groundB(vec2 p) {
-            vec2 q = mat2(0.8, -0.6, 0.6, 0.8) * p * 0.31 + 0.53;
-            return mix(texture2D(uGroundB, p).r, texture2D(uGroundB, q).r, 0.45);
+          // one of the ground's materials at a place (colour, relief in alpha): at its own scale and at a
+          // larger one, turned, so the repeat never lines up. gx, gy: the place's change across a pixel
+          vec4 ground(int i, vec2 xz, vec2 gx, vec2 gy) {
+            float k = 1.0 / uGroundTile[i];
+            const mat2 turn = mat2(0.8, -0.6, 0.6, 0.8);
+            float k2 = k * 0.21;
+            vec4 b = textureGrad(uGround, vec3(turn * xz * k2 + 0.37, float(i)), turn * gx * k2, turn * gy * k2);
+            // the finer scale only where a pixel can show it: past that it has blurred to the layer's mean
+            // and a far larger one, kilometres to the repeat: from high up the land keeps a grain (outcrops,
+            // scrub, washes) where the finer ones have blurred away
+            const mat2 turn2 = mat2(0.6, 0.8, -0.8, 0.6);
+            float k3 = k * 0.011;
+            vec4 c = textureGrad(uGround, vec3(turn2 * xz * k3 + 0.71, float(i)), turn2 * gx * k3, turn2 * gy * k3);
+            float px = max(length(gx), length(gy)) * k;
+            float far = smoothstep(0.3, 3.0, px);
+            if (px > 0.6) return mix(mix(vec4(uGroundMean[i], 0.5), b, 0.42), c, 0.2 + 0.3 * far);
+            vec4 a = textureGrad(uGround, vec3(xz * k, float(i)), gx * k, gy * k);
+            a = mix(a, vec4(uGroundMean[i], 0.5), smoothstep(0.3, 0.6, px));
+            return mix(mix(a, b, 0.42), c, 0.2);
           }`,
         )
         .replace(
           "#include <map_fragment>",
           `vec3 albedo = texture2D(uAlbedo, vUvC * uAlbedoX.xy + uAlbedoX.zw).rgb;
+          // the ground's relief, for the normal below: stones and clods catching the sun
+          float bumpH = 0.0;
           float viewKm = length(vViewPosition);
           float near = 1.0 - smoothstep(uNear.x, uNear.y, viewKm);
           {
-            // the ground's grain, by what the land is: cliff, stony hill, meadow, sand, plain
+            // what the land is here: a cliff, a stony hill, dry scrub, grass, sand, soil
             vec3 nW = normalize(vNormal);
             float slope = 1.0 - clamp(abs(dot(normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz), nW)), 0.0, 1.0);
             float lum = dot(albedo, vec3(0.3, 0.59, 0.11));
@@ -557,40 +593,78 @@ export class Terrain {
             float sLum = dot(srgb, vec3(0.3, 0.59, 0.11));
             float green = smoothstep(-0.04, 0.0, srgb.g - srgb.r) * (1.0 - smoothstep(0.46, 0.56, sLum));
             float veg = clamp((0.68 - sLum) / 0.25, 0.0, 1.0);
+            vec2 ll = vec2(vWorld.x / uLL.x + uLL.z, -vWorld.z / uLL.y + uLL.w);
+            float patches = vnoise(ll * 90.0) * 0.6 + vnoise(ll * 300.0 + 7.0) * 0.4;
             // sand only where it is flat, bright and yellow: open desert, dunes, beaches
             float sandy = smoothstep(0.05, 0.14, 0.5 * (albedo.r + albedo.g) - albedo.b) * smoothstep(0.32, 0.5, lum) * (1.0 - smoothstep(0.015, 0.05, slope));
             float rock = smoothstep(0.16, 0.38, slope);
             float hill = smoothstep(0.03, 0.12, slope) * (1.0 - rock);
             float rest = max(0.0, 1.0 - rock - hill);
-            float wGreen = rest * green;
-            float wSand = rest * (1.0 - green) * sandy;
-            float wPlain = max(0.0, rest - wGreen - wSand);
-            // repeats every ~300 m and, finer, every ~40 m
-            vec2 p1 = vWorld.xz / 0.3;
-            vec2 p2 = vWorld.xz / 0.04;
-            vec4 a = groundA(p1) * 0.6 + groundA(p2) * 0.4;
-            float b = groundB(p1) * 0.6 + groundB(p2) * 0.4;
-            float grain = rock * a.r + hill * a.g + wGreen * a.b + wSand * a.a + wPlain * b - 0.5;
-            // the finer the view, the more the grain shows
+            // grass where the land is watered, and in patches over the greener hills
+            float grassy = max(green, smoothstep(0.45, 0.95, veg) * smoothstep(0.3, 0.62, patches));
+            float w[${GROUND_LAYERS}];
+            w[0] = rock;
+            w[3] = (rest + 0.5 * hill) * grassy;
+            w[4] = rest * (1.0 - grassy) * sandy * (1.0 - veg);
+            float bare = max(0.0, rest * (1.0 - grassy) - w[4]);
+            float slopes = hill * (1.0 - 0.5 * grassy);
+            w[1] = slopes * (1.0 - 0.6 * veg);
+            w[2] = slopes * 0.6 * veg + bare * veg * 0.6;
+            w[5] = bare * (1.0 - veg * 0.6);
+            // how much of each layer's own colour shows through the painting's
+            const float own[${GROUND_LAYERS}] = float[](0.3, 0.45, 0.42, 0.5, 0.12, 0.3);
+            // the finer the view, the more of the ground's own detail shows
             float show = smoothstep(uNear.y, uNear.x * 0.15, viewKm);
+            vec3 ratio = vec3(1.0);
+            vec3 tone = vec3(0.0);
+            vec3 toneMean = vec3(0.0);
+            float ownness = 0.0;
+            float relief = 0.5;
+            if (show > 0.0) {
+              vec2 gx = dFdx(vWorld.xz);
+              vec2 gy = dFdy(vWorld.xz);
+              ratio = vec3(0.0);
+              float total = 0.0;
+              for (int i = 0; i < ${GROUND_LAYERS}; i++) {
+                if (w[i] < 0.08) continue;
+                vec4 g = ground(i, vWorld.xz, gx, gy);
+                ratio += w[i] * g.rgb / uGroundMean[i];
+                tone += w[i] * g.rgb;
+                toneMean += w[i] * uGroundMean[i];
+                ownness += w[i] * own[i];
+                relief += w[i] * (g.a - 0.5);
+                total += w[i];
+              }
+              float inv = 1.0 / max(total, 1e-3);
+              ratio *= inv;
+              tone *= inv;
+              toneMean *= inv;
+              ownness *= inv;
+            }
+            // taller the further off, as the grain that shows is coarser: it stays a few pixels of relief
+            bumpH = (relief - 0.5) * show * (1.0 + viewKm * 0.45) * (1.0 - smoothstep(160.0, 320.0, viewKm));
             // close up the painting's colours give way to the land's own: quieter, limestone-pale on the hills
             float close = 1.0 - smoothstep(4.0, 60.0, viewKm);
             vec3 grey = vec3(dot(albedo, vec3(0.33)));
             vec3 land = mix(albedo, grey * vec3(1.06, 1.0, 0.9), 0.32 * close);
             land = mix(land, land * 1.12 + 0.03, (hill + rock) * 0.35 * close);
-            vec3 col = land * (1.0 + grain * 0.75 * show);
+            // the painting's colour, varied as the ground varies (stones paler, earth darker, grass greener)...
+            vec3 col = land * mix(vec3(1.0), ratio, show);
+            // ...and leaning to the ground's own hue, at the painting's brightness
+            float lift = dot(land, vec3(0.3, 0.59, 0.11)) / max(dot(toneMean, vec3(0.3, 0.59, 0.11)), 1e-3);
+            col = mix(col, tone * lift, ownness * show * close);
+            // hollows between the stones a little darker
+            col *= mix(1.0, 0.72 + 0.56 * relief, show);
             // patches of scrub and bare ground across the hills, and shade and leaf litter under the groves
-            vec2 ll = vec2(vWorld.x / uLL.x + uLL.z, -vWorld.z / uLL.y + uLL.w);
             float grove = smoothstep(0.36, 0.72, 0.6 * vnoise(ll * 620.0) + 0.4 * vnoise(ll * 1900.0 + vec2(17.0, 5.0)));
-            float patches = vnoise(ll * 90.0) * 0.6 + vnoise(ll * 300.0 + 7.0) * 0.4;
             // ~40 m and ~15 m
             float fine = vnoise(ll * 2600.0) * 0.6 + vnoise(ll * 7000.0 + 3.0) * 0.4;
             float lush = max(veg, green);
             // the land's own colours: red soil, dark maquis, pale limestone breaking through
-            float own = close * (1.0 - wSand);
-            col = mix(col, vec3(0.28, 0.17, 0.1) * (0.8 + 0.4 * patches), smoothstep(0.45, 0.8, patches) * veg * 0.3 * own);
-            col = mix(col, vec3(0.13, 0.15, 0.07) * (0.8 + 0.5 * fine), smoothstep(0.4, 0.8, fine * 0.6 + grove * 0.6) * lush * 0.65 * own);
-            col = mix(col, vec3(0.42, 0.39, 0.34) * (0.85 + 0.3 * fine), smoothstep(0.66, 0.86, fine + (1.0 - veg) * 0.12) * (0.2 + hill + rock) * 0.3 * own);
+            float there = close * (1.0 - w[4]);
+            col = mix(col, vec3(0.28, 0.17, 0.1) * (0.8 + 0.4 * patches), smoothstep(0.45, 0.8, patches) * veg * 0.22 * there);
+            col = mix(col, vec3(0.13, 0.15, 0.07) * (0.8 + 0.5 * fine), smoothstep(0.4, 0.8, fine * 0.6 + grove * 0.6) * lush * 0.5 * there);
+            col = mix(col, vec3(0.42, 0.39, 0.34) * (0.85 + 0.3 * fine), smoothstep(0.66, 0.86, fine + (1.0 - veg) * 0.12) * (0.2 + hill + rock) * 0.2 * there);
             col *= 1.0 + (patches - 0.5) * 0.3 * close;
             col = mix(col, col * vec3(0.66, 0.72, 0.6), grove * lush * 0.6 * close * (1.0 - rock));
             {
@@ -603,7 +677,7 @@ export class Terrain {
               float where = smoothstep(0.004, 0.015, slope) * (1.0 - smoothstep(0.1, 0.2, slope))
                 * smoothstep(0.15, 0.4, veg) * smoothstep(0.35, 0.6, vnoise(ll * 160.0 + 11.0))
                 * (1.0 - smoothstep(900.0, 1100.0, vH)) * (1.0 - smoothstep(0.3, 0.6, aa));
-              col = mix(col, col * 0.7, riser * where * close);
+              col = mix(col, col * 0.84, riser * where * close * 0.7);
             }
             // bare rock greys a little where it is steep
             col = mix(col, vec3(dot(col, vec3(0.33))) * vec3(1.02, 0.98, 0.93), rock * 0.25 * show);
@@ -611,13 +685,24 @@ export class Terrain {
           }`,
         )
         .replace(
+          "#include <normal_fragment_maps>",
+          `#include <normal_fragment_maps>
+          {
+            // a bump map from the ground's relief (Mikkelsen's surface gradient): its height in km, a metre or so
+            vec2 dH = vec2(dFdx(bumpH), dFdy(bumpH)) * 0.0014;
+            vec3 sx = dFdx(-vViewPosition);
+            vec3 sy = dFdy(-vViewPosition);
+            vec3 r1 = cross(sy, normal);
+            vec3 r2 = cross(normal, sx);
+            float det = dot(sx, r1);
+            normal = normalize(abs(det) * normal - sign(det) * (dH.x * r1 + dH.y * r2));
+          }`,
+        )
+        .replace(
           "#include <opaque_fragment>",
           `{
             // far off, the model as Blender rendered it; near, the land lit as it is now
             vec3 baked = texture2D(uRender, vUvC * uRenderX.xy + uRenderX.zw).rgb;
-            // the far land hazes, as it does across real distance (only once the camera is down among it)
-            float haze = smoothstep(uCamDist * 1.6, uCamDist * 14.0 + 20.0, viewKm) * (1.0 - smoothstep(60.0, 400.0, uCamDist)) * 0.6;
-            outgoingLight = mix(outgoingLight, uHaze * 0.9, haze);
             outgoingLight = mix(baked * 1.02, outgoingLight, near);
           }
           #include <opaque_fragment>`,
@@ -711,6 +796,7 @@ export class Terrain {
   dispose() {
     for (const r of this.roots) this.drop(r);
     for (const m of this.materials.values()) m.dispose();
+    this.uniforms.uGround.value?.dispose();
     this.depthMaterial?.dispose();
   }
 }

@@ -65,7 +65,7 @@ type Meta = {
   albedo: Record<string, { l1: string; l2?: string }>;
   metres: { path: string; offset: number };
   lakes: string;
-  ground: [string, string];
+  ground: { path: string; px: number; layers: number; means: [number, number, number][]; tiles: number[] };
   model: ModelParams;
 };
 type Lake = { name: string; level: number; ring: [number, number][] };
@@ -82,12 +82,29 @@ type Chunk = {
 };
 
 const FOV = 32;
+const SHADOW_SIZE = 4096;
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _up = new THREE.Vector3(0, 1, 0);
+/** the light outdoors: the sun, the sky's blue from above, the ground's warm bounce from below, the far haze */
+const SUN_STUDIO = new THREE.Color(0xfff1dc);
+const SUN_OUTDOORS = new THREE.Color(1.0, 0.93, 0.8);
+const SKY_STUDIO = new THREE.Color(0xe9e4dc);
+const SKY_OUTDOORS = new THREE.Color(0.66, 0.76, 1.0);
+const BOUNCE_STUDIO = new THREE.Color(0x3a2c20);
+const BOUNCE_OUTDOORS = new THREE.Color(0.5, 0.4, 0.28);
+const HAZE = new THREE.Color(0.62, 0.68, 0.76);
+/** toward the morning sun: from the south-east, 40° up (x east, y up, z south) */
+const MORNING_SUN = new THREE.Vector3(0.58, 0.64, 0.5).normalize();
+/** rows of a map sent to the GPU at a time */
+const UPLOAD_ROWS = 256;
 /** as close as the camera comes */
-export const MIN_DISTANCE = 0.8;
+export const MIN_DISTANCE = 0.06;
 export const MAX_DISTANCE = 5200;
 /** the zoom (MapLibre sense) to camera distance: kept from the earlier maps so journey framing carries over */
 const ZOOM_K = 72000;
-const LINE_LIFT = 0.06;
+/** a route line's lift off the ground, km: a few metres close up, where the land is drawn finely */
+const LINE_LIFT = 0.003;
 /** the cut sides go down to here, km: a block, not a board */
 const BOTTOM = -110;
 /** the land's exaggeration, from close up to the whole model */
@@ -165,6 +182,18 @@ export class DioramaStage {
   readonly controls: OrbitControls;
   readonly overlay: HTMLDivElement;
   readonly key: THREE.DirectionalLight;
+  /** the sky's light: the studio's soft fill from above; outdoors, blue from the sky and warm off the ground */
+  private fill = new THREE.HemisphereLight(0xe9e4dc, 0x3a2c20, 0.5);
+  private haze = new THREE.FogExp2(0xc4c0b4, 0);
+  /** toward the sun (the key light), from the ground */
+  private sun = new THREE.Vector3(0, 1, 0);
+  /** the studio's key light, as the model was rendered: from the north-west, a map-maker's light */
+  private studioSun = new THREE.Vector3(0, 1, 0);
+  private shadowFit = 0;
+  /** the screen's pixel ratio (capped at 2), and the share of it drawn at just now */
+  private dpr = 1;
+  private sharp = 1;
+  private pace = { ms: 16, since: 0, last: 0 };
   readonly ready: Promise<void>;
   /** the map's frame, once meta.json is in */
   bounds = { west: 10, south: 22, east: 56, north: 44 };
@@ -190,12 +219,14 @@ export class DioramaStage {
   private mh = 0;
   private metreOffset = 11000;
   private seaMask: Uint8Array | null = null;
+  /** the sea mask grown by two of its pixels: the water may reach this far, where the ground is low enough */
+  private seaGrown: Uint8Array | null = null;
   private sw = 0;
   private sh = 0;
   private markers = new Set<DioramaMarker>();
   private lines = new Map<string, { lines: Line2[]; coords: LngLat[][]; style: LineStyle; visible: boolean }>();
   private lineMats = new Set<LineMaterial>();
-  private linesDraped = { e: 0, gen: -1, at: 0 };
+  private linesDraped = { e: 0, gen: -1, at: 0, d: 0 };
   private flight: Flight | null = null;
   private frameFns = new Set<() => void>();
   private userMoveFns = new Set<() => void>();
@@ -209,7 +240,9 @@ export class DioramaStage {
   private sea: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshPhysicalMaterial> | null = null;
   private waterNormals: THREE.Texture | null = null;
   private lakeNormals: THREE.Texture | null = null;
+  private ripple = { uTime: { value: 0 }, uTile: { value: 1 } };
   private lakes: { mesh: THREE.Mesh; level: number; ring: [number, number][]; box: [number, number, number, number] }[] = [];
+  private uploads: { tex: THREE.DataTexture; bmp: ImageBitmap; row: number; done: (t: THREE.Texture) => void }[] = [];
   private albedoPx = new Map<string, { w: number; h: number; px: Uint8ClampedArray; used: number }>();
   private albedoLoading = new Set<string>();
   private scatter: Scatter | null = null;
@@ -227,6 +260,7 @@ export class DioramaStage {
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", stencil: false });
     const dpr = Math.min(window.devicePixelRatio, 2);
+    this.dpr = dpr;
     this.renderer.setPixelRatio(dpr);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
@@ -260,11 +294,12 @@ export class DioramaStage {
     // and a room for glossy things to reflect
     this.key = new THREE.DirectionalLight(0xfff1dc, 3.4);
     this.key.castShadow = true;
-    this.key.shadow.mapSize.set(2048, 2048);
-    this.key.shadow.bias = -0.0004;
-    this.key.shadow.normalBias = 0.02;
+    this.key.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
+    this.key.shadow.radius = 1.6;
     this.scene.add(this.key, this.key.target);
-    this.scene.add(new THREE.HemisphereLight(0xe9e4dc, 0x3a2c20, 0.5));
+    this.scene.add(this.fill);
+    // the air between the camera and the far land, once it is down among it (none over the model on its plinth)
+    this.scene.fog = this.haze;
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.45;
@@ -303,6 +338,8 @@ export class DioramaStage {
     this.jumpTo({ center: [33, 33.4], zoom: 3.85, pitch: 54, bearing: -10 });
     this.ready = this.load();
     this.loop();
+    // for scripts/diorama-shot.mjs: /explore?debug hands the stage to the page
+    if (new URLSearchParams(window.location.search).has("debug")) (window as unknown as { __dio: DioramaStage }).__dio = this;
   }
 
   /* -------------------------------------------------------------- loading */
@@ -342,19 +379,22 @@ export class DioramaStage {
       this.report({ fraction: b ? Math.min(0.95, a / b) : 0, phase: "map" });
     };
     const big = this.renderer.capabilities.maxTextureSize >= 8192;
-    const [metresBmp, previewBmp, seaBmp, groundA, groundB, lakes] = await Promise.all([
+    const [metresBmp, previewBmp, seaBmp, groundBmp, lakes] = await Promise.all([
       this.cache.bitmap(meta.metres.path, undefined, tell("m")),
       this.cache.bitmap(big ? meta.preview : meta.preview.replace(".webp", "-2k.webp"), undefined, tell("p")),
       this.cache.bitmap(meta.sea, { imageOrientation: "flipY" }, tell("s")),
-      this.cache.bitmap(meta.ground[0], undefined, tell("ga")),
-      this.cache.bitmap(meta.ground[1], undefined, tell("gb")),
+      this.cache.bitmap(meta.ground.path, undefined, tell("g")),
       this.cache.blob(meta.lakes).then((b) => b.text()).then((t) => JSON.parse(t) as Lake[]),
     ]);
     if (this.disposed) return;
     this.decodeMetres(metresBmp);
     this.decodeSea(seaBmp);
+    seaBmp.close();
     this.preview = this.texture(previewBmp);
 
+    // before the land: its tiles sink each lake's bed as they build
+    this.waterNormals = waterNormals();
+    this.buildLakes(lakes);
     const terrain = new Terrain(
       meta.chunks,
       meta.model,
@@ -363,10 +403,12 @@ export class DioramaStage {
         return { x: p.x, z: p.z };
       },
       (lng, lat) => this.fallbackMetres(lng, lat),
-      (lng, lat) => this.isSea(lng, lat),
+      (lng, lat) => this.nearSea(lng, lat),
+      (lng, lat) => this.lakeAt(lng, lat)?.level ?? null,
     );
-    terrain.uniforms.uGroundA.value = this.grain(groundA);
-    terrain.uniforms.uGroundB.value = this.grain(groundB);
+    terrain.uniforms.uGround.value = this.ground(groundBmp, meta.ground.px, meta.ground.layers);
+    meta.ground.means.forEach((m, i) => terrain.uniforms.uGroundMean.value[i]?.set(m[0], m[1], m[2]));
+    meta.ground.tiles.forEach((t, i) => (terrain.uniforms.uGroundTile.value[i] = t));
     {
       const { kmLng, kmLat } = this.size();
       const c = this.centre();
@@ -395,8 +437,7 @@ export class DioramaStage {
       this.showMaps(ch, 0, 0);
     }
 
-    this.buildSea(seaBmp);
-    this.buildLakes(lakes);
+    this.buildSea();
     this.buildBody();
     // the coarsest tiles of the whole map, before the curtain lifts
     await new Promise<void>((resolve) => {
@@ -404,10 +445,44 @@ export class DioramaStage {
       check();
     });
     if (this.disposed) return;
+    await this.warmUp();
+    if (this.disposed) return;
     this.loaded = true;
     for (const m of this.markers) this.place(m);
     this.report({ fraction: 1, phase: "ready" });
     setTimeout(() => void this.prefetch(), 6000);
+  }
+
+  /**
+   * every shader the close-up world needs (the leaves, bark, rocks, cities and
+   * their shadows), compiled now, behind the loading curtain, not mid-zoom:
+   * each would otherwise stall a frame for a quarter of a second
+   */
+  private async warmUp() {
+    await Promise.all([this.scatter?.loaded, this.cities?.loaded]);
+    const groups = [this.scatter?.group, this.cities?.group].filter((g): g is THREE.Group => !!g);
+    const touched: THREE.InstancedMesh[] = [];
+    const show = () => {
+      for (const g of groups) g.visible = true;
+      this.scene.traverse((o) => {
+        const inst = o as THREE.InstancedMesh;
+        // one (empty, zero-scaled) instance each, so they draw, and compile, and show nothing
+        if (inst.isInstancedMesh && inst.count === 0) {
+          inst.count = 1;
+          touched.push(inst);
+        }
+      });
+    };
+    show();
+    try {
+      await this.renderer.compileAsync(this.scene, this.camera);
+    } catch {
+      // older drivers: the render below compiles them all the same
+    }
+    show();
+    // the shadow pass's depth shaders too
+    this.composer.render();
+    for (const inst of touched) inst.count = 0;
   }
 
   private texture(img: ImageBitmap) {
@@ -419,11 +494,32 @@ export class DioramaStage {
     return t;
   }
 
-  private grain(img: ImageBitmap) {
-    const t = new THREE.Texture(img);
-    t.flipY = false;
+  /**
+   * the ground's materials as an array texture, a layer each: the strip's
+   * colour (its left half) with the relief beside it (its right) in alpha
+   */
+  private ground(img: ImageBitmap, px: number, layers: number) {
+    const src = pixels(img);
+    img.close();
+    const data = new Uint8Array(px * px * layers * 4);
+    const w = px * 2;
+    for (let y = 0; y < px * layers; y++) {
+      for (let x = 0; x < px; x++) {
+        const i = (y * w + x) * 4;
+        const o = (y * px + x) * 4;
+        data[o] = src[i];
+        data[o + 1] = src[i + 1];
+        data[o + 2] = src[i + 2];
+        data[o + 3] = src[i + px * 4];
+      }
+    }
+    const t = new THREE.DataArrayTexture(data, px, px, layers);
+    t.colorSpace = THREE.SRGBColorSpace;
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    t.generateMipmaps = true;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.magFilter = THREE.LinearFilter;
+    t.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy());
     t.needsUpdate = true;
     return t;
   }
@@ -449,6 +545,7 @@ export class DioramaStage {
     this.seaMask = m;
     this.sw = img.width;
     this.sh = img.height;
+    this.seaGrown = grow(m, img.width, img.height, 2);
   }
 
   /** after the first view, the sharper textures into the cache, one at a time */
@@ -465,18 +562,13 @@ export class DioramaStage {
   /* ------------------------------------------------------------- the body */
 
   /** the seas: clear resin over the painted sea floor from afar, water close up */
-  private buildSea(mask: ImageBitmap) {
+  private buildSea() {
     const { width, height } = this.size();
-    const alpha = new THREE.Texture(mask);
-    // decoded flipped, so its first row is the south edge, where the plane's v starts
-    alpha.flipY = false;
-    alpha.needsUpdate = true;
-    this.waterNormals = waterNormals();
     const mat = new THREE.MeshPhysicalMaterial({
       color: 0x0f3b4a,
       transparent: true,
       opacity: 0.38,
-      alphaMap: alpha,
+      alphaMap: this.seaAlpha(),
       roughness: 0.06,
       metalness: 0,
       clearcoat: 1,
@@ -486,12 +578,99 @@ export class DioramaStage {
       normalScale: new THREE.Vector2(0, 0),
       depthWrite: false,
     });
+    // close up the resin turns to water: opaque, coloured by its depth, its ripples fading with distance
+    const uniforms = { uDepth: { value: this.seaDepth() }, uNear: { value: 0 }, uTile: { value: 1 }, uTime: { value: 0 }, uHorizon: { value: new THREE.Color(0.6, 0.6, 0.56) } };
+    mat.userData.uniforms = uniforms;
+    mat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, uniforms);
+      shader.fragmentShader = shader.fragmentShader
+        .replace("#include <common>", "#include <common>\nuniform sampler2D uDepth;\nuniform float uNear;\nuniform float uTile;\nuniform float uTime;\nuniform vec3 uHorizon;")
+        .replace(
+          "#include <map_fragment>",
+          `#include <map_fragment>
+          {
+            // shallows turquoise over sand, the open sea navy
+            float dep = texture2D(uDepth, vAlphaMapUv).r;
+            vec3 wc = mix(vec3(0.05, 0.23, 0.25), vec3(0.018, 0.11, 0.17), smoothstep(0.0, 0.14, dep));
+            wc = mix(wc, vec3(0.007, 0.045, 0.095), smoothstep(0.2, 0.8, dep));
+            diffuseColor.rgb = mix(diffuseColor.rgb, wc, uNear);
+          }`,
+        )
+        .replace(
+          "#include <normal_fragment_maps>",
+          `#include <normal_fragment_maps>
+          #ifdef USE_NORMALMAP_TANGENTSPACE
+          {
+            // a second swell, larger, turned and drifting the other way: the two never line up into a lattice
+            vec2 uv2 = mat2(0.6, -0.8, 0.8, 0.6) * vNormalMapUv * 0.37 + vec2(-0.021, 0.013) * uTime;
+            vec3 n2 = texture2D(normalMap, uv2).xyz * 2.0 - 1.0;
+            normal = normalize(normal + tbn * vec3(n2.xy * normalScale * 0.9, 0.0));
+          }
+          #endif
+          // ripples only where they are bigger than the pixels: further off, a smooth sheen
+          normal = normalize(mix(nonPerturbedNormal, normal, 1.0 - smoothstep(uTile * 25.0, uTile * 90.0, length(vViewPosition))));`,
+        )
+        .replace(
+          "#include <opaque_fragment>",
+          `{
+            // toward the horizon the sea takes the sky's pale haze, as real water does at a low angle
+            float facing = abs(dot(normalize(vViewPosition), normal));
+            outgoingLight = mix(outgoingLight, uHorizon, pow(1.0 - facing, 5.0) * 0.55 * uNear);
+          }
+          #include <opaque_fragment>`,
+        );
+    };
+    mat.customProgramCacheKey = () => "diorama-sea";
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(width, height, 1, 1), mat);
     sea.rotation.x = -Math.PI / 2;
     sea.renderOrder = 2;
     sea.receiveShadow = true;
     this.bodyGroup.add(sea);
     this.sea = sea;
+  }
+
+  /**
+   * where the sea may be: the mask grown by a couple of its (1.2 km) pixels,
+   * so the shore is drawn by the land meeting the water, not by the mask's
+   * steps; low ground inland (the Dead Sea's basin) stays dry
+   */
+  private seaAlpha() {
+    const w = this.sw;
+    const h = this.sh;
+    const grown = this.seaGrown!;
+    // rows south first, where the plane's v starts
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const row = (h - 1 - y) * w;
+      for (let x = 0; x < w; x++) data.fill(grown[row + x] ? 255 : 0, (y * w + x) * 4, (y * w + x) * 4 + 4);
+    }
+    const t = new THREE.DataTexture(data, w, h);
+    t.magFilter = THREE.LinearFilter;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.generateMipmaps = true;
+    t.needsUpdate = true;
+    return t;
+  }
+
+  /** the sea's depth over the map, for its colour: 0 at the shore, 1 at 1500 m and deeper (square-rooted) */
+  private seaDepth() {
+    const w = this.mw;
+    const h = this.mh;
+    const m = this.metres!;
+    const data = new Uint8Array(w * h * 4);
+    for (let y = 0; y < h; y++) {
+      const row = (h - 1 - y) * w;
+      for (let x = 0; x < w; x++) {
+        const d = Math.max(0, -m[row + x]);
+        data.fill(Math.round(Math.min(1, Math.sqrt(d / 1500)) * 255), (y * w + x) * 4, (y * w + x) * 4 + 4);
+      }
+    }
+    const t = new THREE.DataTexture(data, w, h);
+    t.magFilter = THREE.LinearFilter;
+    t.minFilter = THREE.LinearMipmapLinearFilter;
+    t.generateMipmaps = true;
+    t.needsUpdate = true;
+    return t;
   }
 
   /** the lakes, each at its own level (the Dead Sea four hundred metres down) */
@@ -508,23 +687,55 @@ export class DioramaStage {
       const mat = new THREE.MeshPhysicalMaterial({
         color: 0x14414c,
         transparent: true,
-        opacity: 0.82,
-        roughness: 0.08,
-        clearcoat: 1,
-        clearcoatRoughness: 0.05,
+        opacity: 0.86,
+        roughness: 0.2,
+        clearcoat: 0.35,
+        clearcoatRoughness: 0.12,
         envMapIntensity: 1.2,
+        specularIntensity: 0.6,
         normalMap: this.lakeNormals,
         normalScale: new THREE.Vector2(0.25, 0.25),
         depthWrite: false,
         polygonOffset: true,
         polygonOffsetFactor: -2,
       });
+      // a second swell, larger, turned and drifting the other way, as on the sea: no lattice of glints
+      mat.onBeforeCompile = (shader) => {
+        Object.assign(shader.uniforms, this.ripple);
+        shader.fragmentShader = shader.fragmentShader.replace("#include <common>", "#include <common>\nuniform float uTime;\nuniform float uTile;").replace(
+          "#include <normal_fragment_maps>",
+          `#include <normal_fragment_maps>
+          #ifdef USE_NORMALMAP_TANGENTSPACE
+          {
+            vec2 uv2 = mat2(0.6, -0.8, 0.8, 0.6) * vNormalMapUv * 0.37 + vec2(-0.021, 0.013) * uTime;
+            vec3 n2 = texture2D(normalMap, uv2).xyz * 2.0 - 1.0;
+            normal = normalize(normal + tbn * vec3(n2.xy * normalScale * 0.9, 0.0));
+          }
+          #endif
+          // ripples only where they are bigger than the pixels: further off, a smooth sheen
+          normal = normalize(mix(nonPerturbedNormal, normal, 1.0 - smoothstep(uTile * 9.0, uTile * 30.0, length(vViewPosition))));`,
+        );
+      };
+      mat.customProgramCacheKey = () => "diorama-lake";
       const mesh = new THREE.Mesh(geo, mat);
       mesh.renderOrder = 2;
       this.bodyGroup.add(mesh);
       const lngs = l.ring.map((p) => p[0]);
       const lats = l.ring.map((p) => p[1]);
-      this.lakes.push({ mesh, level: l.level, ring: l.ring, box: [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)] });
+      const box: [number, number, number, number] = [Math.min(...lngs), Math.min(...lats), Math.max(...lngs), Math.max(...lats)];
+      const lake = { mesh, level: l.level, ring: l.ring, box };
+      this.lakes.push(lake);
+      // its level where the elevation data has its surface (the middle value inside it): the water then
+      // meets its shore at the land's own height, not at a step
+      const inside: number[] = [];
+      const step = Math.max(0.01, Math.min(box[2] - box[0], box[3] - box[1]) / 12);
+      for (let lat = box[1] + step / 2; lat < box[3]; lat += step) {
+        for (let lng = box[0] + step / 2; lng < box[2]; lng += step) {
+          if (this.lakeAt(lng, lat) === lake) inside.push(this.fallbackMetres(lng, lat));
+        }
+      }
+      inside.sort((a, b) => a - b);
+      if (inside.length >= 3) lake.level = inside[Math.floor(inside.length / 2)];
     }
   }
 
@@ -596,6 +807,15 @@ export class DioramaStage {
     return (h[i] * (1 - tx) + h[i + 1] * tx) * (1 - ty) + (h[i + this.mw] * (1 - tx) + h[i + this.mw + 1] * tx) * ty;
   }
 
+  /** within a couple of km of the sea: where ground at sea level is water */
+  nearSea(lng: number, lat: number) {
+    if (!this.seaGrown) return false;
+    const { west, south, east, north } = this.bounds;
+    const x = Math.min(this.sw - 1, Math.max(0, Math.floor(((lng - west) / (east - west)) * this.sw)));
+    const y = Math.min(this.sh - 1, Math.max(0, Math.floor(((north - lat) / (north - south)) * this.sh)));
+    return this.seaGrown[y * this.sw + x] === 1;
+  }
+
   isSea(lng: number, lat: number) {
     if (!this.seaMask) return false;
     const { west, south, east, north } = this.bounds;
@@ -614,13 +834,13 @@ export class DioramaStage {
     const h = this.metresAt(lng, lat);
     const p = this.meta?.model;
     if (!p) return 0;
-    return modelY(h, h < 1 && this.isSea(lng, lat), this.exaggeration, p);
+    return modelY(h, h < 0.5 && this.nearSea(lng, lat), this.exaggeration, p);
   }
 
   /** where things stand: the ground (down in a basin too), or the sea's surface over its floor */
   heightAt(lng: number, lat: number) {
     const g = this.groundAt(lng, lat);
-    return this.isSea(lng, lat) ? Math.max(g, 0) : g;
+    return this.nearSea(lng, lat) ? Math.max(g, 0) : g;
   }
 
   /** the year the cities stand in; null for every city at its height */
@@ -637,6 +857,10 @@ export class DioramaStage {
 
   /** whether a place is under one of the lakes */
   inLake(lng: number, lat: number) {
+    return !!this.lakeAt(lng, lat);
+  }
+
+  private lakeAt(lng: number, lat: number) {
     for (const l of this.lakes) {
       const [w, s, e, n] = l.box;
       if (lng < w || lng > e || lat < s || lat > n) continue;
@@ -645,9 +869,9 @@ export class DioramaStage {
       for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
         if (r[i][1] > lat !== r[j][1] > lat && lng < ((r[j][0] - r[i][0]) * (lat - r[i][1])) / (r[j][1] - r[i][1]) + r[i][0]) inside = !inside;
       }
-      if (inside) return true;
+      if (inside) return l;
     }
-    return false;
+    return null;
   }
 
   /** km between two places, on the ground */
@@ -667,7 +891,8 @@ export class DioramaStage {
     const a = this.albedoPx.get(id);
     if (!a) {
       const entry = this.meta.albedo[id];
-      const path = entry?.l2 ?? entry?.l1;
+      // the 1024 painting: plenty to choose trees by, and a quarter the reading of the finer one
+      const path = entry?.l1;
       if (path && !this.albedoLoading.has(id)) {
         this.albedoLoading.add(id);
         void this.cache
@@ -785,13 +1010,73 @@ export class DioramaStage {
     ch.loading.add(tag);
     void this.cache
       .bitmap(path)
-      .then((bmp) => {
-        if (this.disposed) return bmp.close();
-        (kind === "r" ? ch.render : ch.albedo)[lv] = this.texture(bmp);
-        ch.shown = "";
-      })
+      .then(
+        (bmp) =>
+          new Promise<void>((done) => {
+            if (this.disposed) {
+              bmp.close();
+              return done();
+            }
+            // sent to the GPU a strip a frame, and shown once it is all there
+            this.upload(bmp, (tex) => {
+              (kind === "r" ? ch.render : ch.albedo)[lv] = tex;
+              ch.shown = "";
+              done();
+            });
+          }),
+      )
       .catch(() => undefined)
       .finally(() => ch.loading.delete(tag));
+  }
+
+  /**
+   * a large image onto the GPU without a stall: its storage made at once, its
+   * pixels sent in strips of rows over the next frames (a 4096 map in one go
+   * would freeze a frame for a quarter of a second), then its mipmaps
+   */
+  private upload(bmp: ImageBitmap, done: (t: THREE.Texture) => void) {
+    const tex = new THREE.DataTexture(null, bmp.width, bmp.height);
+    tex.source.dataReady = false;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.flipY = false;
+    tex.generateMipmaps = true;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    tex.anisotropy = this.renderer.capabilities.getMaxAnisotropy();
+    tex.needsUpdate = true;
+    this.uploads.push({ tex, bmp, row: 0, done });
+  }
+
+  private pumpUploads(budgetMs: number) {
+    const gl = this.renderer.getContext() as WebGL2RenderingContext;
+    const t0 = performance.now();
+    while (this.uploads.length && performance.now() - t0 < budgetMs) {
+      const u = this.uploads[0];
+      if (u.row === 0) this.renderer.initTexture(u.tex);
+      const handle = (this.renderer.properties.get(u.tex) as { __webglTexture?: WebGLTexture }).__webglTexture;
+      if (!handle) {
+        // the renderer couldn't make it: fall back to the plain way
+        this.uploads.shift();
+        u.done(this.texture(u.bmp));
+        continue;
+      }
+      this.renderer.state.bindTexture(gl.TEXTURE_2D, handle);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      const rows = Math.min(UPLOAD_ROWS, u.bmp.height - u.row);
+      gl.pixelStorei(gl.UNPACK_SKIP_ROWS, u.row);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, u.row, u.bmp.width, rows, gl.RGBA, gl.UNSIGNED_BYTE, u.bmp);
+      gl.pixelStorei(gl.UNPACK_SKIP_ROWS, 0);
+      u.row += rows;
+      if (u.row >= u.bmp.height) {
+        gl.generateMipmap(gl.TEXTURE_2D);
+        u.bmp.close();
+        this.uploads.shift();
+        u.done(u.tex);
+      }
+    }
   }
 
   /* --------------------------------------------------------------- camera */
@@ -800,7 +1085,9 @@ export class DioramaStage {
     const az = (azimuthDeg * Math.PI) / 180;
     const el = (elevationDeg * Math.PI) / 180;
     // x east, z south: the sun's direction from the ground
-    this.key.position.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az)).multiplyScalar(3000);
+    this.studioSun.set(Math.cos(el) * Math.sin(az), Math.sin(el), -Math.cos(el) * Math.cos(az));
+    this.sun.copy(this.studioSun);
+    this.key.position.copy(this.sun).multiplyScalar(3000);
   }
 
   private poseToOrbit(p: Pose): Orbit {
@@ -828,6 +1115,12 @@ export class DioramaStage {
     return Math.log2(ZOOM_K / this.camera.position.distanceTo(this.controls.target));
   }
 
+  /** the camera's pitch and bearing now, degrees (MapLibre's sense, as poses give them) */
+  getTilt() {
+    const o = this.current();
+    return { pitch: (o.polar * 180) / Math.PI, bearing: (-o.azim * 180) / Math.PI };
+  }
+
   isMoving() {
     return !!this.flight;
   }
@@ -852,7 +1145,8 @@ export class DioramaStage {
       opts.onEnd?.();
       return;
     }
-    const peak = Math.max(from.dist, to.dist, Math.min(MAX_DISTANCE * 0.7, travel * 1.1));
+    // rise only enough to keep both ends in mind: a short hop stays low
+    const peak = Math.max(from.dist, to.dist, Math.min(MAX_DISTANCE * 0.7, travel * 0.5));
     this.flight = { from, to, peak, start: performance.now(), dur, onEnd: opts.onEnd };
   }
 
@@ -876,6 +1170,28 @@ export class DioramaStage {
 
   setPadding(p: Padding) {
     this.padding = p;
+    this.resize();
+  }
+
+  /**
+   * Down among the land a full-resolution frame can cost more than the screen's
+   * refresh: when frames run slow for a while, draw fewer pixels (never under
+   * one per CSS pixel, where there is a choice); back at the model, all of them
+   * again. Stepped rarely, as each step remakes the frame's buffers.
+   */
+  private keepPace(now: number, d: number) {
+    const p = this.pace;
+    const dt = Math.min(100, now - (p.last || now));
+    p.last = now;
+    p.ms += (dt - p.ms) * 0.05;
+    let want = this.sharp;
+    if (d > 260) want = 1;
+    else if (p.ms > 24 && now - p.since > 2500) want = Math.max(Math.min(1, 1 / this.dpr), this.sharp * 0.84);
+    if (want === this.sharp || this.flight) return;
+    this.sharp = want;
+    p.since = now;
+    p.ms = 16;
+    this.renderer.setPixelRatio(this.dpr * want);
     this.resize();
   }
 
@@ -917,7 +1233,7 @@ export class DioramaStage {
       this.camera.position.y += dy * k;
     }
     const [clng, clat] = this.lngLatOf(this.camera.position);
-    const floor = this.heightAt(clng, clat) + Math.max(0.05, this.camera.position.distanceTo(t) * 0.04);
+    const floor = this.heightAt(clng, clat) + Math.max(0.012, this.camera.position.distanceTo(t) * 0.04);
     if (this.camera.position.y < floor) this.camera.position.y = floor;
   }
 
@@ -993,6 +1309,7 @@ export class DioramaStage {
       this.lineMats.delete(l.material as LineMaterial);
     }
     const out: Line2[] = [];
+    const order = prev ? [...this.lines.keys()].indexOf(id) : this.lines.size;
     for (const pts of coords) {
       if (pts.length < 2) continue;
       const geo = new LineGeometry();
@@ -1012,7 +1329,8 @@ export class DioramaStage {
       this.lineMats.add(mat);
       const line = new Line2(geo, mat);
       if (style.dashed) line.computeLineDistances();
-      line.renderOrder = 3;
+      // sets draw in the order first made: a casing under its line, a glow under the line it lights
+      line.renderOrder = 3 + order * 0.01;
       line.visible = prev?.visible ?? true;
       this.scene.add(line);
       out.push(line);
@@ -1033,9 +1351,12 @@ export class DioramaStage {
     const v = new THREE.Vector3();
     const { kmLng, kmLat } = this.size();
     const d = this.camera.position.distanceTo(this.controls.target);
-    const stepKm = clamp(d / 120, 0.15, 6);
+    // points close enough to follow the ground between the terrain's vertices (~40 m at the finest)
+    const stepKm = clamp(d / 120, 0.02, 6);
     // lifted clear of coarser tiles than the ones the heights came from
-    const lift = LINE_LIFT + d * 0.0032;
+    // lifted clear of coarser tiles than the ones the heights came from: close up the tiles are fine,
+    // and a line held high would hang off to one side of the traveller standing on the ground
+    const lift = LINE_LIFT + d * 0.0032 * smoothstep(4, 40, d);
     for (let i = 0; i < pts.length - 1; i++) {
       const a = pts[i];
       const b = pts[i + 1];
@@ -1055,9 +1376,11 @@ export class DioramaStage {
   private redrape(now: number) {
     if (!this.terrain || now - this.linesDraped.at < 600) return;
     const e = this.exaggeration;
-    const moved = Math.abs(e - this.linesDraped.e) / e > 0.04;
+    const d = this.camera.position.distanceTo(this.controls.target);
+    // the drape's lift and step follow the camera's distance: re-drape as it zooms
+    const moved = Math.abs(e - this.linesDraped.e) / e > 0.04 || Math.abs(Math.log(d / (this.linesDraped.d || d))) > 0.35;
     if (!moved && this.terrain.gen === this.linesDraped.gen) return;
-    this.linesDraped = { e, gen: this.terrain.gen, at: now };
+    this.linesDraped = { e, gen: this.terrain.gen, at: now, d };
     for (const [id, set] of this.lines) this.setLines(id, set.coords, set.style);
   }
 
@@ -1105,29 +1428,49 @@ export class DioramaStage {
     this.exaggeration = E_NEAR + (E_FAR - E_NEAR) * smoothstep(6, 900, d);
     this.keepToTheLand();
     // near enough for a hut at your feet, far enough for the whole model
-    this.camera.near = clamp(d * 0.004, 0.005, 2);
+    this.camera.near = clamp(d * 0.004, 0.001, 2);
     this.camera.far = clamp(d * 60 + 600, 900, 40000);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
     this.controls.zoomSpeed = d < 30 ? 0.8 : 1.1;
     this.controls.panSpeed = 1;
 
-    // the key light's shadow covers what is in view, around the target
-    const s = clamp(d * 0.9, 1.5, 1600);
-    const cam = this.key.shadow.camera;
-    if (Math.abs(cam.right - s) / s > 0.02) {
-      cam.left = -s;
-      cam.right = s;
-      cam.top = s;
-      cam.bottom = -s;
-      cam.near = 1;
-      cam.far = 8000;
+    // the key light's shadow: fitted closely round what is looked at, so that close up a house and a
+    // tree cast theirs (a few texels to the metre), and from higher the hills do. In steps, and moved a
+    // texel at a time, so shadows don't crawl as the camera moves
+    const fit = Math.exp(Math.round(Math.log(clamp(d * 1.5, 0.16, 2400)) / 0.12) * 0.12);
+    const texel = (2 * fit) / SHADOW_SIZE;
+    const shadow = this.key.shadow;
+    if (fit !== this.shadowFit) {
+      this.shadowFit = fit;
+      const cam = shadow.camera;
+      cam.left = -fit;
+      cam.right = fit;
+      cam.top = fit;
+      cam.bottom = -fit;
+      cam.near = fit * 0.2;
+      cam.far = fit * 14;
       cam.updateProjectionMatrix();
+      // clear of its own surface by a texel or so, whatever the texel's size
+      shadow.normalBias = texel * 1.6;
+      shadow.bias = (-texel * 0.5) / (cam.far - cam.near);
     }
-    const dir = this.key.position.clone().sub(this.key.target.position).normalize();
-    this.key.target.position.copy(this.controls.target);
-    this.key.position.copy(this.controls.target).addScaledVector(dir, 3000);
+    // down among the land the light is the morning sun's, from the east-south-east: it falls on the
+    // fronts of the tabernacle and the temple, which face the sunrise. It comes round while the land
+    // still wears its render, before the live-lit land shows
+    const dir = this.sun.copy(this.studioSun).lerp(MORNING_SUN, 1 - smoothstep(260, 420, d)).normalize();
+    const right = _v1.crossVectors(_up, dir).normalize();
+    const upward = _v2.crossVectors(dir, right);
+    const tx = this.controls.target.dot(right);
+    const ty = this.controls.target.dot(upward);
+    this.key.target.position
+      .copy(this.controls.target)
+      .addScaledVector(right, Math.round(tx / texel) * texel - tx)
+      .addScaledVector(upward, Math.round(ty / texel) * texel - ty);
+    this.key.position.copy(this.key.target.position).addScaledVector(dir, fit * 7);
     this.dof.cocMaterial.focusRange = d * 1.8;
+    // dashes the same size on screen at any distance (a line's dash and gap are given in km at 1 km away)
+    for (const mat of this.lineMats) if (mat.dashed) mat.dashScale = 1 / Math.max(0.002, d * 0.003);
 
     const time = (now - this.start) / 1000;
     // down among the land: open sky in place of the studio, and the lens's blur and window light let go
@@ -1138,10 +1481,22 @@ export class DioramaStage {
     back.uProjInv.value.copy(this.camera.projectionMatrixInverse);
     back.uCamWorld.value.copy(this.camera.matrixWorld);
     back.uSun.value.copy(dir);
+    back.uHorizon.value.copy(HAZE);
+    // the light of the open air: a warmer sun, blue in the shadows, and haze thickening toward the horizon
+    this.key.color.lerpColors(SUN_STUDIO, SUN_OUTDOORS, outdoors);
+    this.key.intensity = 3.4 + 0.5 * outdoors;
+    this.fill.color.lerpColors(SKY_STUDIO, SKY_OUTDOORS, outdoors);
+    this.fill.groundColor.lerpColors(BOUNCE_STUDIO, BOUNCE_OUTDOORS, outdoors);
+    this.fill.intensity = 0.5 + 0.32 * outdoors;
+    this.scene.environmentIntensity = 0.45 - 0.25 * outdoors;
+    this.haze.color.copy(HAZE);
+    // half hidden at about nine times the camera's distance from what it looks at
+    this.haze.density = (outdoors * 0.092) / Math.max(d, 0.3);
     const shafts = (this.studio.shafts.material as THREE.ShaderMaterial).uniforms;
     shafts.uTime.value = time;
     shafts.uStrength.value = 1 - outdoors * 0.85;
-    this.dof.bokehScale = 0.65 * (0.15 + 0.85 * smoothstep(6, 160, d));
+    // the lens's shallow focus is for the model on its plinth: over the land itself, nearly none
+    this.dof.bokehScale = 0.65 * (0.08 + 0.92 * smoothstep(150, 700, d));
     this.grade.hue.saturation = -0.14 + 0.12 * outdoors;
     this.grade.contrast.contrast = 0.06 + 0.08 * outdoors;
     if (this.studio.dust) {
@@ -1163,10 +1518,17 @@ export class DioramaStage {
       });
     }
     this.water(d, time);
+    this.keepPace(now, d);
     this.cities?.update(now);
+    // on the way down, read the painting under the camera before the trees need it
+    if (d < 400) {
+      const [tl, tt] = this.lngLatOf(this.controls.target);
+      this.albedoAt(tl, tt);
+    }
     this.scatter?.update(now);
     if (this.sides && Math.abs(this.exaggeration - this.sidesE) / this.sidesE > 0.03) this.buildSides();
     this.stream(now);
+    this.pumpUploads(5);
     this.redrape(now);
     this.composer.render();
     this.projectMarkers(now);
@@ -1176,19 +1538,27 @@ export class DioramaStage {
   /** resin from afar, water close up; lakes at their levels as the exaggeration eases */
   private water(d: number, time: number) {
     const near = 1 - smoothstep(25, 260, d);
+    const tile = clamp(d * 0.03, 0.03, 60);
     if (this.sea) {
       const m = this.sea.material;
-      m.opacity = 0.38 + 0.47 * near;
-      m.normalScale.setScalar(0.3 * near);
+      m.opacity = 0.38 + 0.62 * near;
+      m.normalScale.setScalar(0.32 * near);
       // a sheen, not a mirror: the sun spreads into a soft glitter
-      m.roughness = 0.06 + 0.12 * near;
+      m.roughness = 0.2 + 0.06 * near;
+      m.clearcoat = 0.55 * (1 - near);
       m.clearcoatRoughness = 0.04 + 0.1 * near;
-      m.clearcoat = 1 - 0.5 * near;
+      m.envMapIntensity = 1.4 - 0.7 * near;
+      m.specularIntensity = 0.7 - 0.2 * near;
       m.color.setRGB(0.06 - 0.03 * near, 0.23 - 0.05 * near, 0.29 - 0.03 * near);
+      const u = m.userData.uniforms as { uNear: { value: number }; uTile: { value: number }; uTime: { value: number } } | undefined;
+      if (u) {
+        u.uNear.value = near;
+        u.uTile.value = tile;
+        u.uTime.value = time;
+      }
     }
     if (this.waterNormals) {
-      // ripples a few hundredths of the view across: crisp close up, a fine sheen (mipmapped flat) from higher
-      const tile = clamp(d * 0.03, 0.03, 60);
+      // ripples a few hundredths of the view across: crisp close up, faded to a sheen further off
       const r = this.size().width / tile;
       this.waterNormals.repeat.set(r, r);
       this.waterNormals.offset.set(time * 0.004, time * 0.0027);
@@ -1200,6 +1570,11 @@ export class DioramaStage {
     }
     const p = this.meta?.model;
     if (p) for (const l of this.lakes) l.mesh.position.y = modelY(l.level, false, this.exaggeration, p) + 0.002;
+    // the lakes' ripples only close up too: from higher they would tile into a lattice of glints
+    this.ripple.uTime.value = time;
+    this.ripple.uTile.value = tile;
+    const ripple = 0.25 * (1 - smoothstep(4, 40, d));
+    for (const l of this.lakes) (l.mesh.material as THREE.MeshPhysicalMaterial).normalScale.setScalar(ripple);
   }
 
   dispose() {
@@ -1208,6 +1583,10 @@ export class DioramaStage {
     this.resizeObs.disconnect();
     this.controls.dispose();
     for (const ch of this.chunks) for (const t of [...ch.render, ...ch.albedo]) t?.dispose();
+    for (const u of this.uploads) {
+      u.bmp.close();
+      u.tex.dispose();
+    }
     this.preview?.dispose();
     this.terrain?.dispose();
     this.scatter?.dispose();
@@ -1231,6 +1610,25 @@ const smoothstep = (a: number, b: number, x: number) => {
   const t = clamp((x - a) / (b - a), 0, 1);
   return t * t * (3 - 2 * t);
 };
+
+/** a mask grown by r pixels (a round brush) */
+function grow(src: Uint8Array, w: number, h: number, r: number) {
+  const out = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (!src[y * w + x]) continue;
+      for (let dy = -r; dy <= r; dy++) {
+        const yy = y + dy;
+        if (yy < 0 || yy >= h) continue;
+        for (let dx = -r; dx <= r; dx++) {
+          const xx = x + dx;
+          if (xx >= 0 && xx < w && dx * dx + dy * dy <= r * r + 1) out[yy * w + xx] = 1;
+        }
+      }
+    }
+  }
+  return out;
+}
 
 function pixels(img: ImageBitmap) {
   const cv = document.createElement("canvas");

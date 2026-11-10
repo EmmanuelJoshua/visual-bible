@@ -38,7 +38,7 @@ export function usePlayback() {
           const next = s.autoNext && s.stopAt === null && CHRONO[CHRONO.indexOf(j) + 1];
           if (next) {
             s.select(next.id, 0);
-            dwell = 1.6;
+            dwell = 2.5;
           } else {
             s.setPlaying(false);
           }
@@ -48,7 +48,8 @@ export function usePlayback() {
           let t = s.t + dt / secs;
           if (Math.floor(t) > seg) {
             t = seg + 1;
-            dwell = s.reducedMotion ? 3.5 : t === end ? 3.4 : 2.4;
+            // long enough at each stop to read where they are and what happened
+            dwell = s.reducedMotion ? 4.5 : t === end ? 5 : 4.2;
           }
           useJourneyStore.setState({ t });
         }

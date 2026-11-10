@@ -22,7 +22,8 @@ download_ph() {
 download_ph brown_planks_08 public/textures/wood diff nor rough
 download_ph rough_linen public/textures/linen diff nor rough
 download_ph crepe_satin public/textures/scarlet diff nor rough
-download_ph medieval_blocks_02 public/textures/stone diff nor rough
+# dressed blocks: the "hewn stone" of the temple (1 Kings 5:17), not rubble
+download_ph sandstone_blocks_08 public/textures/stone diff nor rough
 
 echo "HDRI"
 curl -sSL --fail -o public/textures/env/studio_small_03_1k.hdr \

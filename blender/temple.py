@@ -76,9 +76,12 @@ def walls():
     p = s.part("west", anim="grow")
     ashlar(p, "stone", "z", -HZ, HZ, F, F + H, HX1 + t / 2, t, key_alt="stoneDark")
     p.done()
-    # the south wall is cut low so the interior reads as a section
-    p = s.part("south", anim="grow")
+    # the south wall is cut low so the interior reads as a section; on the map the house stands whole
+    p = s.part("south", anim="grow", view="build")
     ashlar(p, "stone", "x", HX0 - t, HX1 + t, F, F + 3, -zc, t, key_alt="stoneDark")
+    p.done()
+    p = s.part("south_whole", anim="grow", view="map")
+    ashlar(p, "stone", "x", HX0 - t, HX1 + t, F, F + H, -zc, t, openings=windows, key_alt="stoneDark")
     p.done()
     # the east wall: a 10-cubit doorway, lintel above
     for side in (-1, 1):
@@ -99,8 +102,11 @@ def porch():
     p = s.part("north", anim="grow")
     ashlar(p, "stone", "x", PX0 - t, PX1, F, F + H, zc, t, key_alt="stoneDark")
     p.done()
-    p = s.part("south", anim="grow")
+    p = s.part("south", anim="grow", view="build")
     ashlar(p, "stone", "x", PX0 - t, PX1, F, F + 3, -zc, t, key_alt="stoneDark")
+    p.done()
+    p = s.part("south_whole", anim="grow", view="map")
+    ashlar(p, "stone", "x", PX0 - t, PX1, F, F + H, -zc, t, key_alt="stoneDark")
     p.done()
     for side in (-1, 1):
         p = s.part(f"pier_{'n' if side > 0 else 's'}", anim="grow")
@@ -119,6 +125,12 @@ def porch():
         x = PX0 - t + span * (i + 0.5) / n
         p.box("cedar", (span / n - 0.1, 0.5, HZ + t), (x, F + H + 0.25, (HZ + t) / 2), bevel=0.04)
     p.box("cedar", (span + 0.6, 0.35, HZ + t + 0.6), (PX0 - t + span / 2, F + H + 0.68, (HZ + t) / 2), bevel=0.05)
+    p.done()
+    p = s.part("roof_south", view="map")
+    for i in range(n):
+        x = PX0 - t + span * (i + 0.5) / n
+        p.box("cedar", (span / n - 0.1, 0.5, HZ + t), (x, F + H + 0.25, -(HZ + t) / 2), bevel=0.04)
+    p.box("cedar", (span + 0.6, 0.35, HZ + t + 0.6), (PX0 - t + span / 2, F + H + 0.68, -(HZ + t) / 2), bevel=0.05)
     p.done()
 
 
@@ -159,6 +171,40 @@ def chambers():
             p.box("cedar", (outer_w + 1 - inner_w, 0.45, 0.9), ((inner_w + outer_w + 1) / 2, y0 + 5 - 0.22, z + 0.5), bevel=0.05)
             z += 1.5
         p.done()
+        # on the map the chambers go round the south too ("round about", 1 Kings 6:5), and are closed at their ends
+        p = s.part(f"storey{storey}_south", view="map")
+        if rebate:
+            p.box("stoneDark", (HX1 + t - (HX0 - t), 5, rebate), (0, y0 + 2.5, -(face_n + rebate / 2)), bevel=0.06)
+        ashlar(p, "stoneDark", "x", HX0 - t, outer_w + 1, y0, y0 + 5, -(outer_n + 0.5), 1.0, course=1.25, block=2.5, openings=windows, key_alt="stone")
+        ashlar(p, "stoneDark", "z", -(outer_n + 1), -face_n, y0, y0 + 5, outer_w + 0.5, 1.0, course=1.25, block=2.5, key_alt="stone")
+        for side in (-1, 1):
+            lo, hi = sorted((side * face_n, side * outer_n))
+            ashlar(p, "stoneDark", "z", lo, hi, y0, y0 + 5, HX0 - t + 0.5, 1.0, course=1.25, block=2.5, key_alt="stone")
+        p.done()
+        p = s.part(f"floor{storey}_south", tally="cedar", view="map")
+        x = HX0 - t
+        while x < inner_w - 0.2:
+            p.box("cedar", (0.9, 0.45, outer_n + 1 - inner_n), (x + 0.5, y0 + 5 - 0.22, -(inner_n + outer_n + 1) / 2), bevel=0.05)
+            x += 1.5
+        z = -(outer_n + 1)
+        while z < -face_n - 0.2:
+            p.box("cedar", (outer_w + 1 - inner_w, 0.45, 0.9), ((inner_w + outer_w + 1) / 2, y0 + 5 - 0.22, z + 0.5), bevel=0.05)
+            z += 1.5
+        p.done()
+    # and boards over the topmost beams: their roof
+    p = s.part("roof", tally="cedar", view="map")
+    y = F + 15 + 0.16
+    span_x = outer_w + 1.3 - (HX0 - t - 0.3)
+    for side in (-1, 1):
+        zz = face_n
+        while zz < outer_n + 1.2:
+            p.box("cedar", (span_x, 0.3, 0.95), ((HX0 - t - 0.3 + outer_w + 1.3) / 2, y, side * (zz + 0.5)), bevel=0.03)
+            zz += 1.0
+    xx = face_w
+    while xx < outer_w + 1.2:
+        p.box("cedar", (0.95, 0.3, 2 * face_n), (xx + 0.5, y, 0), bevel=0.03)
+        xx += 1.0
+    p.done()
 
 
 # ------------------------------------------------------------------- cedar
@@ -226,6 +272,12 @@ def cedar():
     x = HX0 - t
     while x < HX1 + t - 0.01:
         p.box("cedar", (0.95, 0.35, HZ + t), (x + 0.5, F + H + 1.18, (HZ + t) / 2), bevel=0.03)
+        x += 1.0
+    p.done()
+    p = s.part("roof_south", view="map")
+    x = HX0 - t
+    while x < HX1 + t - 0.01:
+        p.box("cedar", (0.95, 0.35, HZ + t), (x + 0.5, F + H + 1.18, -(HZ + t) / 2), bevel=0.03)
         x += 1.0
     p.done()
 

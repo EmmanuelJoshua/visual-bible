@@ -8,7 +8,7 @@ Measurements are the text's, in cubits; what the text leaves open is noted.
 
 import math
 
-from vb import arc_wing, feather, rod
+from vb import arc_wing, feather, rod, sheet_wing, skin_object
 
 TAU = 2 * math.pi
 
@@ -99,30 +99,73 @@ def tablet(p, o, x, lean=0.0):
 def mercy_seat(p, o):
     """the kapporet: a slab of pure gold the size of the ark's top"""
     p.box("gold", (ARK_L, 0.1, ARK_W), _at(o, 0, ARK_H + 0.05, 0), bevel=0.02)
+    # a raised border round it, as beaten work has
+    for s in (-1, 1):
+        rod(p, "goldDark", _at(o, -ARK_L / 2 + 0.05, ARK_H + 0.1, s * (ARK_W / 2 - 0.05)), _at(o, ARK_L / 2 - 0.05, ARK_H + 0.1, s * (ARK_W / 2 - 0.05)), 0.018, segs=8)
+        rod(p, "goldDark", _at(o, s * (ARK_L / 2 - 0.05), ARK_H + 0.1, -ARK_W / 2 + 0.05), _at(o, s * (ARK_L / 2 - 0.05), ARK_H + 0.1, ARK_W / 2 - 0.05), 0.018, segs=8)
 
 
 def ark_cherub(p, o, d):
     """
-    Beaten out of the mercy seat's end, kneeling, facing the other; wings
-    spread up and forward to cover the seat (Exodus 25:18–20).
-    `d` = +1 for the cherub at the −x end (facing +x), −1 for the other.
+    Beaten out of the mercy seat's end, kneeling, facing the other, its face
+    bowed toward the seat; its wings stretched forth on high, covering the
+    seat, their tips toward the other's (Exodus 25:18–20). `d` = +1 for the
+    cherub at the −x end (facing +x), −1 for the other. The text gives no
+    more of their form than that: a kneeling, robed, winged figure is the
+    oldest reading.
     """
-    cx = -d * (ARK_L / 2 - 0.32)
+    cx = -d * (ARK_L / 2 - 0.33)
     b = ARK_H + 0.1
-    body = [(0, 0), (0.24, 0), (0.25, 0.08), (0.2, 0.3), (0.16, 0.42), (0.17, 0.5), (0.1, 0.58), (0, 0.6)]
-    p.lathe("gold", body, _at(o, cx, b, 0), segs=20)
-    p.sphere("gold", 0.11, _at(o, cx + d * 0.05, b + 0.7, 0), segs=(14, 9), scale=(1.0, 1.1, 0.95))
+    k = 1.3  # the figure a cubit high as it kneels
+
+    def P(x, y, z):
+        return _at(o, cx + d * x * k, b + y * k, z * k)
+
+    # the figure, kneeling back on its heels: a skeleton with flesh on it
+    verts = [
+        P(-0.02, 0.2, 0),  # 0 hips
+        P(0.0, 0.36, 0),  # 1 waist
+        P(0.04, 0.52, 0),  # 2 chest
+        P(0.07, 0.63, 0),  # 3 neck
+        P(0.24, 0.075, 0.085),  # 4, 5 knees
+        P(0.24, 0.075, -0.085),
+        P(-0.17, 0.05, 0.09),  # 6, 7 feet
+        P(-0.17, 0.05, -0.09),
+        P(0.04, 0.56, 0.135),  # 8, 9 shoulders
+        P(0.04, 0.56, -0.135),
+        P(0.13, 0.42, 0.15),  # 10, 11 elbows
+        P(0.13, 0.42, -0.15),
+        P(0.2, 0.5, 0.035),  # 12, 13 hands, joined before the breast
+        P(0.2, 0.5, -0.035),
+    ]
+    edges = [(0, 1), (1, 2), (2, 3), (0, 4), (0, 5), (4, 6), (5, 7), (2, 8), (2, 9), (8, 10), (9, 11), (10, 12), (11, 13)]
+    radii = [(0.14, 0.12), (0.11, 0.095), (0.125, 0.1), 0.05, 0.085, 0.085, 0.055, 0.055, 0.055, 0.055, 0.045, 0.045, 0.04, 0.04]
+    radii = [tuple(v * k for v in r) if isinstance(r, tuple) else r * k for r in radii]
+    p.merge_object("gold", skin_object("cherub", verts, edges, radii, subsurf=2))
+    p.torus("goldDark", 0.115 * k, 0.016, P(0.0, 0.36, 0), segs=(16, 5))  # girdle
+    # the head, bowed, with its hair
+    p.sphere("gold", 0.082 * k, P(0.1, 0.735, 0), segs=(16, 10), scale=(0.95, 1.1, 0.9))
+    p.sphere("goldDark", 0.086 * k, P(0.083, 0.752, 0), segs=(14, 8), scale=(0.98, 1.0, 0.98))
     for s in (-1, 1):
-        sh = _at(o, cx, b + 0.48, s * 0.15)
-        hd = _at(o, cx + d * 0.24, b + 0.36, s * 0.06)
-        rod(p, "gold", sh, hd, 0.035, segs=8)
-        # each wing arches up and toward the middle, splayed outward a little
-        pts = []
-        n = 10
+        # a wing from each shoulder: up, then forward over the seat, a little apart from its fellow
+        bone = []
+        n = 16
         for i in range(n + 1):
             u = i / n
-            pts.append(_at(o, cx + d * (0.05 + 0.95 * u), b + 0.52 + 0.85 * math.sin(u * math.pi * 0.62) - 0.1 * u, s * (0.16 + 0.26 * u)))
-        arc_wing(p, pts, "x", d, flight=(0.2, 0.2), covert=(0.1, 0.04), width=0.1, edge=0.03)
+            sh = P(-0.04, 0.56, s * 0.13)
+            bone.append((sh[0] + d * 0.92 * u**0.9, sh[1] + 0.66 * math.sin(u * math.pi * 0.55), sh[2] + s * 0.16 * math.sin(u * math.pi)))
+
+        def trail(u, s=s):
+            # at the shoulder the feathers lie down the back; at the tip they reach on, forward and a little down
+            a = math.radians(-40 + 118 * u)
+            return (d * math.sin(a), -math.cos(a), s * 0.28 * (1 - u))
+
+        rod_edge = 0.03
+        for i in range(n):
+            rod(p, "gold", bone[i], bone[i + 1], rod_edge * (1 - 0.6 * i / n), segs=8)
+        flip = s * d
+        sheet_wing(p, "gold", bone, trail, lambda u: (0.36 + 0.2 * u) * (1 - u**7), feathers=9, thick=0.024, flip=flip)
+        sheet_wing(p, "goldDark", bone, trail, lambda u: (0.17 + 0.08 * u) * (1 - u**7), feathers=13, thick=0.018, flip=flip, lift=0.022)
 
 
 def ark(p, o):

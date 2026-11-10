@@ -7,6 +7,7 @@ import { disposeGroup, loadArtifactObject } from "@/lib/artifacts/geometry";
 import {
   loadArtifactMaterials,
   loadStudioEnv,
+  withEnvironment,
 } from "@/lib/artifacts/materials";
 
 type Mode = "orbit" | "place";
@@ -162,7 +163,7 @@ export function ObjectStage({
     tick();
 
     void Promise.all([loadArtifactMaterials(), loadStudioEnv(renderer)])
-      .then(async ([mats, env]) => [await loadArtifactObject(artifactId, mats), env] as const)
+      .then(async ([mats, env]) => [await loadArtifactObject(artifactId, withEnvironment(mats, env, 0.7)), env] as const)
       .then(([loaded, env]) => {
         if (cancelled) return;
         scene.environment = env;

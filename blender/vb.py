@@ -535,6 +535,60 @@ def feather(p, key, top, length, width, lean, broad="z"):
     p.mesh(key, verts, faces)
 
 
+def sheet_wing(p, key, bone, trail, chord, feathers=9, thick=0.02, flip=1, lift=0.0):
+    """
+    A wing as beaten or cast metal has it: one smooth sheet from `bone` (its
+    leading edge, app coordinates, root first), `chord(u)` deep along
+    `trail(u)` (a unit direction, by the fraction u along the wing), thick at
+    the leading edge and thin at the trailing; its feathers raised ridges
+    side by side, the trailing edge scalloped at their tips. `lift` raises
+    the whole sheet off the wing's face (for a row of coverts over another).
+    """
+    pts = [Vector(b) for b in bone]
+    n = len(pts) - 1
+
+    def at(u):
+        f = min(n - 1e-6, max(0.0, u * n))
+        k = int(f)
+        return pts[k].lerp(pts[k + 1], f - k), (pts[k + 1] - pts[k]).normalized()
+
+    nu, nv = feathers * 6, 5
+    top, bot = [], []
+    for iu in range(nu + 1):
+        u = iu / nu
+        b, tangent = at(u)
+        t = Vector(trail(u)).normalized()
+        side = (tangent - t * tangent.dot(t)).normalized()
+        nrm = t.cross(side).normalized() * flip
+        # across a feather: 0 at its edges, 1 down its middle
+        mid = abs(math.sin(math.pi * feathers * u))
+        c = chord(u) * (0.8 + 0.2 * mid)
+        for iv in range(nv + 1):
+            v = iv / nv
+            body = thick * (1 - v) ** 1.5
+            ridge = thick * 0.7 * (mid - 0.45) * math.sin(v * math.pi * 0.5)
+            q = b + t * (c * v) + nrm * lift
+            top.append(tuple(q + nrm * (body * 0.5 + thick * 0.12 + ridge)))
+            bot.append(tuple(q - nrm * (body * 0.5)))
+    w = nv + 1
+    verts = top + bot
+    off = len(top)
+    faces = []
+    for iu in range(nu):
+        for iv in range(nv):
+            a, b2, c2, d = iu * w + iv, iu * w + iv + 1, (iu + 1) * w + iv + 1, (iu + 1) * w + iv
+            faces.append((a, b2, c2, d))
+            faces.append((off + d, off + c2, off + b2, off + a))
+        # the leading and trailing edges
+        faces.append((iu * w, (iu + 1) * w, off + (iu + 1) * w, off + iu * w))
+        faces.append((iu * w + nv, off + iu * w + nv, off + (iu + 1) * w + nv, (iu + 1) * w + nv))
+    for iu in (0, nu):
+        for iv in range(nv):
+            a, b2 = iu * w + iv, iu * w + iv + 1
+            faces.append((a, off + a, off + b2, b2) if iu == 0 else (a, b2, off + b2, off + a))
+    p.mesh(key, verts, faces, smooth=True)
+
+
 def arc_wing(p, pts, broad, outward, flight=(1.6, 1.6), covert=(0.75, 0.3), width=0.42, edge=0.16, keys=("gold", "goldDark")):
     """
     A wing along `pts` (its leading edge, app coordinates, root first):

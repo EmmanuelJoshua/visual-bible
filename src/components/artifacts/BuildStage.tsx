@@ -16,6 +16,7 @@ import { disposeGroup } from "@/lib/artifacts/geometry";
 import {
   loadArtifactMaterials,
   loadStudioEnv,
+  withEnvironment,
 } from "@/lib/artifacts/materials";
 
 export type BuildMeta = {
@@ -384,7 +385,8 @@ export function BuildStage({
         if (cancelled) return;
         scene.environment = envMap;
         scene.environmentIntensity = env === ENV.sanctuary ? 0.55 : 0.45;
-        asm = assembleBuild(id, mats, model);
+        // each material mirrors the room at its own strength: gold bright, wood and stone hardly
+        asm = assembleBuild(id, withEnvironment(mats, envMap, env === ENV.sanctuary ? 0.75 : 0.6), model);
         scene.add(asm.root);
 
         const { span, bounds } = asm;

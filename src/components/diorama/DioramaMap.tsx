@@ -47,18 +47,29 @@ function routeCoords(j: Journey): LngLat[][] {
     .map((s) => s.pts);
 }
 
+/**
+ * the journey so far: the legs behind, the leg under way (up to the
+ * traveller), and the "time passes" hops between parts of a journey
+ */
 function travelled(j: Journey, t: number, reduced: boolean) {
-  const done: LngLat[][] = [];
+  const past: LngLat[][] = [];
+  const now: LngLat[][] = [];
   const jumps: LngLat[][] = [];
   const upTo = reduced ? Math.round(t) : t;
+  // the leg under way, or at a stop, the one just arrived by
+  const current = Math.max(0, Math.ceil(upTo) - 1);
   pathOf(j).segments.forEach((seg, i) => {
     if (upTo <= i) return;
     const u = Math.min(1, upTo - i);
     const pts = u >= 1 ? seg.pts : partialLine(seg, 0.5 - Math.cos(Math.PI * u) / 2);
-    (seg.jump ? jumps : done).push(pts);
+    if (seg.jump) jumps.push(pts);
+    else (i === current ? now : past).push(pts);
   });
-  return { done, jumps };
+  return { past, now, jumps };
 }
+
+/** the line sets the route is drawn in, back to front */
+const ROUTE_LINES = ["route-plan", "route-past", "route-case", "route-glow", "route-now", "route-jump"];
 
 /** unique places along a journey (Jerusalem appears once, not six times) */
 function placesOf(j: Journey) {
@@ -152,6 +163,9 @@ export default function DioramaMap({ padding, onStage }: Props) {
     let userMoved = false;
     let flying = false;
     let lastStop = -1;
+    // how the viewer has set the camera (their zoom and tilt, and their turn against the journey's lean):
+    // kept as playback follows the journey, so pressing play doesn't throw it away
+    let own: { zoom: number; pitch: number; bearing: number } | null = null;
 
     const traveller = new DioramaMarker(travellerEl, { anchor: "center", interactive: false, priority: 0 })
       .setLngLat(markerAt(journeyById.get(store.getState().journeyId)!, 0))
@@ -164,15 +178,27 @@ export default function DioramaMap({ padding, onStage }: Props) {
       }
     });
 
-    const pose = (j: Journey, t: number, reducedMotion: boolean): CameraPose =>
+    const framing = (j: Journey, t: number, reducedMotion: boolean): CameraPose =>
       reducedMotion ? stopPose(j, Math.round(t)) : cameraAt(j, t);
+    const pose = (j: Journey, t: number, reducedMotion: boolean): CameraPose => {
+      const p = framing(j, t, reducedMotion);
+      if (!own) return p;
+      // just as close as they set it, at their pitch; their turn added to the journey's lean
+      return { center: p.center, zoom: own.zoom, pitch: own.pitch, bearing: p.bearing + own.bearing };
+    };
+    /** after the viewer moved the camera: how it now differs from the framing at t */
+    const remember = (j: Journey, t: number, reducedMotion: boolean) => {
+      const p = framing(j, t, reducedMotion);
+      const tilt = stage.getTilt();
+      own = { zoom: stage.getZoom(), pitch: tilt.pitch, bearing: tilt.bearing - p.bearing };
+    };
 
-    const flyTo = (p: CameraPose, reducedMotion: boolean, after?: () => void) => {
+    const flyTo = (p: CameraPose, reducedMotion: boolean, after?: () => void, duration = 2600) => {
       flying = true;
       userMoved = false;
       store.getState().setCameraBusy(true);
       stage.flyTo(p, {
-        duration: reducedMotion ? 0 : 2600,
+        duration: reducedMotion ? 0 : duration,
         onEnd: () => {
           if (!flying) return;
           flying = false;
@@ -184,31 +210,41 @@ export default function DioramaMap({ padding, onStage }: Props) {
     };
 
     const drawRoute = (j: Journey, t: number, reducedMotion: boolean) => {
-      const { done, jumps } = travelled(j, t, reducedMotion);
-      stage.setLines("route-glow", done, { color: j.color, width: 10, opacity: 0.3 });
-      stage.setLines("route-done", done, { color: j.color, width: 3.4 });
-      stage.setLines("route-jump", jumps, { color: "#f4efe6", width: 1.6, opacity: 0.6, dashed: true, dash: [2, 10] });
+      const { past, now, jumps } = travelled(j, t, reducedMotion);
+      // where they've been, quietly; the leg under way, bright, on a dark casing so it reads on any ground
+      stage.setLines("route-past", past, { color: j.color, width: 2, opacity: 0.55 });
+      stage.setLines("route-case", now, { color: "#14100c", width: 6, opacity: 0.35 });
+      stage.setLines("route-glow", now, { color: j.color, width: 9, opacity: 0.16 });
+      stage.setLines("route-now", now, { color: j.color, width: 3 });
+      stage.setLines("route-jump", jumps, { color: "#f4efe6", width: 1.2, opacity: 0.35, dashed: true, dash: [1.5, 4] });
     };
 
     const sync = (journeyChanged: boolean, needFly = false) => {
       const { journeyId: id, t, focus: f, reducedMotion } = store.getState();
       const j = journeyById.get(id)!;
       if (journeyChanged) {
-        stage.setLines("route-plan", routeCoords(j), { color: "#f4efe6", width: 2, opacity: 0.55, dashed: true, dash: [6, 8] });
+        own = null;
+        // the way ahead: a faint dotted hint, not a second route
+        stage.setLines("route-plan", routeCoords(j), { color: "#f4efe6", width: 1.4, opacity: 0.32, dashed: true, dash: [1, 3] });
       }
       drawRoute(j, t, reducedMotion);
       traveller.setLngLat(reducedMotion ? j.stops[Math.round(t)].coord : markerAt(j, t));
       if (f) return;
 
       const stop = Math.round(t);
-      if (journeyChanged || needFly || userMoved) {
+      if (userMoved && !journeyChanged) {
+        // the viewer framed it themselves: carry on from their framing, only re-centring on the traveller
+        remember(j, t, reducedMotion);
+        lastStop = stop;
+        flyTo(pose(j, t, reducedMotion), reducedMotion, () => sync(false), 900);
+      } else if (journeyChanged || needFly) {
         lastStop = stop;
         flyTo(pose(j, t, reducedMotion), reducedMotion, () => sync(false));
       } else if (!flying) {
         if (reducedMotion) {
-          if (stop !== lastStop) stage.jumpTo(stopPose(j, stop));
+          if (stop !== lastStop) stage.jumpTo(pose(j, stop, true));
         } else {
-          stage.jumpTo(cameraAt(j, t));
+          stage.jumpTo(pose(j, t, false));
         }
         lastStop = stop;
       }
@@ -239,7 +275,7 @@ export default function DioramaMap({ padding, onStage }: Props) {
     const unsubWorld = useWorldStore.subscribe((w, prev) => {
       if (w.camera && w.camera !== prev.camera) flyToCommand(w.camera);
       if (w.layers.journeys !== prev.layers.journeys) {
-        for (const k of ["route-plan", "route-glow", "route-done", "route-jump"]) stage.setLinesVisible(k, w.layers.journeys);
+        for (const k of ROUTE_LINES) stage.setLinesVisible(k, w.layers.journeys);
       }
     });
     return () => {

@@ -476,13 +476,59 @@ def step_pack():
 # colour without its shading (it lights the land live up close), the lakes at
 # their own levels, heights in metres, and the grain of the ground.
 
-#: the ground's grain, by layer: textures from Poly Haven (CC0); luminance only, packed four to an image
-GROUND = {
-    "a": ["rock_face", "aerial_rocks_04", "rocky_terrain_02", "aerial_beach_01"],  # cliff, stony hill, meadow, sand
-    "b": ["dry_ground_rocks"],  # plain
-}
+#: the ground close up, by what the land is there: scanned ground from Poly Haven (CC0), each a layer
+#: of one strip (its colour, and beside it its relief), in the order the terrain shader names them
+GROUND = [
+    ("rock_face", 0.06),  # 0 cliff: a face of rock, 60 m to the tile
+    ("rocky_trail", 0.03),  # 1 stony hill: limestone scree
+    ("grass_path_2", 0.03),  # 2 dry ground with tufts: the hills' scrub
+    ("rocky_terrain_02", 0.07),  # 3 grass
+    ("aerial_beach_01", 0.08),  # 4 sand
+    ("dry_ground_rocks", 0.03),  # 5 soil
+]
+GROUND_PX = 1024
 METRE_OFFSET = 11000.0
 LAKE_MIN_DEG2 = 0.004  # smaller lakes are left to the painting
+
+
+def ground_map(name, kind):
+    path = os.path.join(RAW, "ground", f"{name}_{kind}.jpg")
+    if not os.path.exists(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        r = session.get(f"https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/{name}/{name}_{kind}_1k.jpg", timeout=120)
+        r.raise_for_status()
+        with open(path, "wb") as f:
+            f.write(r.content)
+    return Image.open(path)
+
+
+def step_ground(write_meta=True):
+    """the ground's materials: ground.webp, a strip of layers (colour on the left, relief on the right), and their mean colours"""
+    layers, means = [], []
+    for name, _ in GROUND:
+        rgb = np.asarray(ground_map(name, "diff").convert("RGB").resize((GROUND_PX, GROUND_PX), Image.LANCZOS), np.float32)
+        disp = np.asarray(ground_map(name, "disp").convert("L").resize((GROUND_PX, GROUND_PX), Image.LANCZOS), np.float32)
+        # the relief centred on mid-grey with its contrast evened out, so every layer bumps alike
+        disp = np.clip((disp - disp.mean()) / (disp.std() + 1e-6) * 42 + 128, 1, 255)
+        # side by side, not in an alpha channel: a canvas would premultiply the colour by it
+        layers.append(np.concatenate([rgb, np.repeat(disp[:, :, None], 3, axis=2)], axis=1).astype(np.uint8))
+        # the layer's mean colour (linear light): the shader divides by it, to keep each place's own hue
+        lin = (rgb / 255.0) ** 2.2
+        means.append([round(float(v), 4) for v in lin.reshape(-1, 3).mean(axis=0)])
+    Image.fromarray(np.concatenate(layers, axis=0), "RGB").save(os.path.join(OUT, "ground.webp"), quality=84, method=6)
+    for old in ("ground-a.webp", "ground-b.webp"):
+        if os.path.exists(os.path.join(OUT, old)):
+            os.remove(os.path.join(OUT, old))
+    ground = dict(path="ground.webp", px=GROUND_PX, layers=len(GROUND), means=means, tiles=[t for _, t in GROUND])
+    if write_meta:
+        with open(os.path.join(OUT, "meta.json")) as f:
+            meta = json.load(f)
+        meta["ground"] = ground
+        meta["version"] = meta.get("version", 0) + 1
+        with open(os.path.join(OUT, "meta.json"), "w") as f:
+            json.dump(meta, f, indent=1)
+    print(f"  ground.webp ({len(GROUND)} layers)", flush=True)
+    return ground
 
 
 def step_close():
@@ -555,24 +601,7 @@ def step_close():
         print(f"  lake {props.get('name')}: {level:.0f} m, {len(simple)} points", flush=True)
     with open(os.path.join(OUT, "lakes.json"), "w") as f:
         json.dump(lakes, f)
-    # the ground's grain
-    for key, names in GROUND.items():
-        chans = []
-        for name in names:
-            path = os.path.join(RAW, "ground", f"{name}.jpg")
-            if not os.path.exists(path):
-                os.makedirs(os.path.dirname(path), exist_ok=True)
-                r = session.get(f"https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/{name}/{name}_diff_1k.jpg", timeout=120)
-                r.raise_for_status()
-                with open(path, "wb") as f:
-                    f.write(r.content)
-            lum = np.asarray(Image.open(path).convert("L").resize((1024, 1024), Image.LANCZOS), np.float32)
-            # centred on mid-grey, its contrast evened out, so it only shades the colour it lies on
-            lum = (lum - lum.mean()) / (lum.std() + 1e-6) * 38 + 128
-            chans.append(np.clip(lum, 0, 255).astype(np.uint8))
-        while len(chans) < 4:
-            chans.append(np.full((1024, 1024), 128, np.uint8))
-        Image.fromarray(np.stack(chans, -1), "RGBA").save(os.path.join(OUT, f"ground-{key}.webp"), quality=90, method=5)
+    ground = step_ground(write_meta=False)
     with open(os.path.join(OUT, "meta.json")) as f:
         meta = json.load(f)
     meta.update(
@@ -580,7 +609,7 @@ def step_close():
         albedo={c["id"]: dict(l1=f"alb/{c['id']}.webp", **({"l2": f"alb/{c['id']}-2.webp"} if (c["col"], c["row"]) in FINE else {})) for c in meta["chunks"]},
         metres=dict(path="metres.png", offset=METRE_OFFSET),
         lakes="lakes.json",
-        ground=["ground-a.webp", "ground-b.webp"],
+        ground=ground,
         model=dict(vertical=VERTICAL, seaVertical=SEA_VERTICAL, seaFloor=SEA_FLOOR, peakEase=PEAK_EASE),
     )
     with open(os.path.join(OUT, "meta.json"), "w") as f:
@@ -607,8 +636,8 @@ def simplify(pts, tol):
 
 
 if __name__ == "__main__":
-    steps = sys.argv[1:2] or ["data", "render", "pack", "close"]
+    steps = sys.argv[1:2] or ["data", "render", "pack", "close"]  # "ground": just the close-up ground's materials
     only = sys.argv[2] if len(sys.argv) > 2 else None
     for step in (["data", "render", "pack", "close"] if steps == ["all"] else steps):
         print(f"▸ {step}", flush=True)
-        {"data": lambda: step_data(only), "render": lambda: step_render(only), "pack": step_pack, "close": step_close}[step]()
+        {"data": lambda: step_data(only), "render": lambda: step_render(only), "pack": step_pack, "close": step_close, "ground": step_ground}[step]()

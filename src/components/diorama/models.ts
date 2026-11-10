@@ -3,7 +3,8 @@ import type { ArtifactId } from "@/data/artifacts";
 import { BUILDS } from "@/data/builds";
 import type { LngLat } from "@/data/journeys";
 import { assembleBuild, loadBuildModel, showStep, tickParts, type Assembled } from "@/lib/artifacts/build";
-import { loadArtifactMaterials, type ArtifactMats } from "@/lib/artifacts/materials";
+import { loadArtifactMaterials, withEnvironment, type ArtifactMats } from "@/lib/artifacts/materials";
+import { built } from "./cities";
 import type { DioramaStage } from "./stage";
 
 /**
@@ -45,7 +46,11 @@ type Entry = StructureOnMap & {
   holder: THREE.Group;
   shadow: THREE.Mesh;
   footprint: THREE.Box3 | null;
+  terrace: THREE.Mesh | null;
   placed: string;
+  /** the terrain's generation it was last seated on, and when */
+  gen: number;
+  seated: number;
 };
 
 function lastStructuralStep(id: ArtifactId): number {
@@ -85,7 +90,9 @@ export class DioramaModels {
     stage.scene.add(this.root);
     void loadArtifactMaterials().then((mats) => {
       if (this.disposed) return;
-      this.mats = mats;
+      // gold and bronze mirror the studio; the map's own scene dims its environment for the open air
+      const env = stage.scene.environment;
+      this.mats = env ? withEnvironment(mats, env, 0.55) : mats;
       for (const e of this.entries.values()) this.ensureLoaded(e);
     });
     void stage.ready.then(() => {
@@ -99,6 +106,7 @@ export class DioramaModels {
       if (keep.has(id)) continue;
       this.stage.clearings.delete(id);
       this.root.remove(e.holder, e.shadow);
+      this.dropTerrace(e);
       e.shadow.geometry.dispose();
       e.asm?.root.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
       this.entries.delete(id);
@@ -111,7 +119,7 @@ export class DioramaModels {
         const shadow = new THREE.Mesh(new THREE.BufferGeometry(), this.shadowMat);
         shadow.receiveShadow = true;
         shadow.renderOrder = 4;
-        e = { ...s, asm: null, loading: false, step: -1, holder, shadow, footprint: null, placed: "" };
+        e = { ...s, asm: null, loading: false, step: -1, holder, shadow, footprint: null, terrace: null, placed: "", gen: -1, seated: 0 };
         this.entries.set(s.id, e);
         this.root.add(holder, shadow);
       }
@@ -143,7 +151,17 @@ export class DioramaModels {
     const scale = this.scaleAt(e, dist);
     // re-seated when it has grown or shrunk, or the land's exaggeration has changed, by a few percent
     const q = (v: number) => Math.round(Math.log(v) / 0.03);
-    const key = `${e.coord[0]},${e.coord[1]},${e.resting},${!!e.footprint},${q(scale)},${q(this.stage.exaggeration)}`;
+    // ...or the land under it has come in sharper: the first heights are a coarse sketch, and a build
+    // seated on those is left buried (or hanging) when the real hill arrives
+    const gen = this.stage.terrain?.gen ?? 0;
+    const now = performance.now();
+    if (gen !== e.gen && now - e.seated > 300) {
+      e.gen = gen;
+      e.seated = now;
+    }
+    // how far the camera has come down to it: 1 where it stands at its true size
+    const near = 1 - smoothstep(2, 5, dist);
+    const key = `${e.coord[0]},${e.coord[1]},${e.resting},${!!e.footprint},${q(scale)},${q(this.stage.exaggeration)},${e.gen},${Math.round(near * 20)}`;
     if (e.placed === key) return;
     e.placed = key;
     const fp = e.footprint;
@@ -171,6 +189,7 @@ export class DioramaModels {
     let yaw = 0;
     const up = new THREE.Vector3(0, 1, 0);
     let y: number;
+    let low = 0;
     if (e.resting) {
       // the hull along the slope's contour, resting on its keel and listing a little
       const probe = fitPlane(sample(0));
@@ -191,16 +210,62 @@ export class DioramaModels {
       const tall = fp ? (fp.max.y - fp.min.y) * scale : 1;
       y = plane.a + Math.max(0, above) - 0.1 * tall;
     } else {
-      // level, at the ground's mean under it: the high side takes it in, the low side props it
+      // level. From afar, at the ground's mean under it: the high side takes it in, the low side props
+      // it. Close up, at its true size, on a terrace built up to the ground's highest point under it (as
+      // the temple's mount was), so the hillside buries none of its court
       const hs = sample(0).map((p) => p[2]);
-      y = hs.reduce((a, b) => a + b, 0) / hs.length;
+      const mean = hs.reduce((a, b) => a + b, 0) / hs.length;
+      const high = Math.max(...hs);
+      low = Math.min(...hs);
+      y = mean + (high + 0.0003 - mean) * near;
     }
     e.holder.position.set(centre.x, y, centre.z);
     e.holder.quaternion
       .setFromUnitVectors(new THREE.Vector3(0, 1, 0), up)
       .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI - yaw));
     e.holder.scale.setScalar(scale);
+    this.placeTerrace(e, centre, y, low, sx, sz, !e.resting && !!fp && near > 0.02);
     this.placeShadow(e, centre, Math.max(sx, sz) * 2.2);
+  }
+
+  /**
+   * the terrace a build stands on close up: from its floor down into the
+   * hillside, its sides battered; dressed stone under the temple, banked
+   * earth under the rest
+   */
+  private placeTerrace(e: Entry, centre: THREE.Vector3, y: number, low: number, sx: number, sz: number, show: boolean) {
+    if (!show) {
+      if (e.terrace) e.terrace.visible = false;
+      return;
+    }
+    const depth = y - low + 0.002;
+    const geo = new THREE.BoxGeometry(sx * 1.05, depth, sz * 1.05);
+    geo.translate(0, -depth / 2 - 0.00002, 0);
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > -depth / 2) continue;
+      pos.setX(i, pos.getX(i) + Math.sign(pos.getX(i)) * depth * 0.14);
+      pos.setZ(i, pos.getZ(i) + Math.sign(pos.getZ(i)) * depth * 0.14);
+    }
+    if (!e.terrace) {
+      const stone = e.id === "temple";
+      let color = new THREE.Color(0.8, 0.75, 0.65);
+      if (!stone) {
+        // the land's own colour there, from the painting
+        const c = this.stage.albedoAt(e.coord[0], e.coord[1]);
+        color = c ? new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] / 255, THREE.SRGBColorSpace).multiplyScalar(1.2) : new THREE.Color(0.5, 0.38, 0.26);
+      }
+      e.terrace = new THREE.Mesh(geo, built({ name: stone ? "limestone" : "earth", color }, "terrace"));
+      e.terrace.castShadow = true;
+      e.terrace.receiveShadow = true;
+      this.root.add(e.terrace);
+    } else {
+      e.terrace.geometry.dispose();
+      e.terrace.geometry = geo;
+    }
+    e.terrace.visible = true;
+    e.terrace.position.set(centre.x, y, centre.z);
+    e.terrace.quaternion.copy(e.holder.quaternion);
   }
 
   /** a patch of the land around the build that shows only its shadow */
@@ -257,9 +322,22 @@ export class DioramaModels {
     e.step = step;
   }
 
+  private dropTerrace(e: Entry) {
+    if (!e.terrace) return;
+    this.root.remove(e.terrace);
+    e.terrace.geometry.dispose();
+    (e.terrace.material as THREE.Material).dispose();
+    e.terrace = null;
+  }
+
   /** every frame: drop-in animations, and seating once the land's heights are in */
   tick() {
     const now = performance.now();
+    // the patch that catches a model's shadow is for the far view, where the land wears its render;
+    // close up the land is lit live and takes the shadow itself
+    const d = this.stage.eye.distanceTo(this.stage.controls.target);
+    this.shadowMat.opacity = 0.42 * smoothstep(140, 420, d);
+    this.shadowMat.visible = this.shadowMat.opacity > 0.01;
     for (const e of this.entries.values()) {
       if (e.asm) tickParts(e.asm, now);
       this.place(e);
@@ -271,6 +349,7 @@ export class DioramaModels {
     for (const e of this.entries.values()) {
       e.asm?.root.traverse((o) => (o as THREE.Mesh).geometry?.dispose());
       e.shadow.geometry.dispose();
+      this.dropTerrace(e);
     }
     this.shadowMat.dispose();
     for (const id of this.entries.keys()) this.stage.clearings.delete(id);

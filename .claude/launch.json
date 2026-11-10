@@ -15,13 +15,11 @@
     },
     {
       "name": "static-export",
-      "runtimeExecutable": "python3",
+      "runtimeExecutable": "node",
       "runtimeArgs": [
-        "-m",
-        "http.server",
-        "4317",
-        "--directory",
-        "out"
+        "scripts/serve-export.mjs",
+        "out",
+        "4317"
       ],
       "port": 4317
     }

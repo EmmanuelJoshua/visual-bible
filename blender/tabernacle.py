@@ -180,6 +180,13 @@ def layer(step, key, o, bottom, uv="world", flap=0.0):
     p = step.part("west", anim="drop:6", uv=uv, tally=key)
     hanging(p, key, -z_edge, z_edge, bottom, y, folds=0.07, per=1.5, axis="z", c=x1)
     p.done()
+    # on the map the tent stands whole: the south half of the roof, and the south side
+    p = step.part("roof_south", anim="drop:6", uv=uv, tally=key, view="map")
+    cloth(p, key, [[(xx, yy, -zz) for (xx, yy, zz) in row] for row in rows])
+    p.done()
+    p = step.part("south", anim="drop:6", uv=uv, tally=key, view="map")
+    hanging(p, key, x0, x1, bottom, y, folds=0.07, per=1.5, axis="x", c=-z_edge)
+    p.done()
 
 
 s = Step("linen")

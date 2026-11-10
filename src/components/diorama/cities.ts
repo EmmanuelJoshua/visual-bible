@@ -87,6 +87,8 @@ type City = { town: TownNow; layout: Layout; key: string; placed: Placed; dist: 
 
 export class DioramaCities {
   readonly group = new THREE.Group();
+  /** resolves once the kits are in */
+  readonly loaded: Promise<void>;
   /** the towns standing in the year, for the scatter to keep its trees out of */
   active: TownNow[] = [];
   /** bumps when `active` changes */
@@ -104,7 +106,7 @@ export class DioramaCities {
     this.group.name = "cities";
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
-    void Promise.all(KITS.map((k) => loader.loadAsync(k))).then((kits) => {
+    this.loaded = Promise.all(KITS.map((k) => loader.loadAsync(k))).then((kits) => {
       for (const gltf of kits) {
         gltf.scene.updateMatrixWorld(true);
         for (const node of gltf.scene.children) {
@@ -121,7 +123,7 @@ export class DioramaCities {
             const m = o as THREE.Mesh;
             if (!m.isMesh) return;
             const src = m.material as THREE.MeshStandardMaterial;
-            const mat = new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.9, metalness: 0, flatShading: true, envMapIntensity: 0.35 });
+            const mat = built(src, kind);
             // every kit piece sits at its file's origin in metres; drawn in km
             const geo = unpacked(m.geometry);
             geo.applyMatrix4(m.matrixWorld);
@@ -324,16 +326,20 @@ export class DioramaCities {
     if (t.style === "greek" || t.style === "roman") {
       // courtyard houses under red tiles; in a Roman city's heart, an apartment block
       const heart = t.style === "roman" && Math.hypot(b.e, b.n) < t.radius * 0.45;
-      if (heart) {
-        const [e, n] = at(-10, 0);
-        out.push({ kind: "insula", e, n, yaw: b.yaw, sx: 1, sy: 0.9 + rand() * 0.25, sz: 1, sink: 1.5 });
-      }
-      for (const [x, y] of heart ? [[13, -9], [13, 9]] : [[-12, -9], [12, -9], [-12, 9], [12, 9]]) {
-        if (rand() < 0.08) continue;
-        const [e, n] = at(x, y);
-        // packed to the block's alleys, as a city's houses were
-        const wide = heart ? 1.25 : 1.5;
-        out.push({ kind: "house_roman", e, n, yaw: b.yaw + (y > 0 ? Math.PI : 0), sx: wide - rand() * 0.1, sy: 0.9 + rand() * 0.35, sz: 1.32 - rand() * 0.1, sink: 1.5 });
+      // built up to the block's streets, wall to wall, as a city's houses were: six plots, 16 × 18 m
+      const tall = heart ? Math.floor(rand() * 6) : -1;
+      const tall2 = heart ? Math.floor(rand() * 6) : -1;
+      let plot = 0;
+      for (const y of [-9, 9]) {
+        for (const x of [-16, 0, 16]) {
+          const k = plot++;
+          if (rand() < 0.05) continue;
+          const [e, n] = at(x, y);
+          const turn = b.yaw + (y > 0 ? Math.PI : 0);
+          // the kit's block of flats is 24 × 18, its house 14 × 12
+          if (k === tall || k === tall2) out.push({ kind: "insula", e, n, yaw: turn, sx: 15.6 / 24, sy: 0.8 + rand() * 0.3, sz: 17.4 / 18, sink: 1.5 });
+          else out.push({ kind: "house_roman", e, n, yaw: turn, sx: 15.6 / 14, sy: 0.9 + rand() * 0.5, sz: 17.4 / 12, sink: 1.5 });
+        }
       }
     } else {
       const kinds = HOUSES[t.style];
@@ -445,6 +451,112 @@ export class DioramaCities {
     }
     this.group.removeFromParent();
   }
+}
+
+/* ------------------------------------------------------------- materials */
+
+/** kit pieces people lived in: their walls get small windows */
+const LIVED_IN = /^(house_|block_)/;
+/** materials that are laid in courses (stone, brick), and so show their joints */
+const COURSED = new Set(["limestone", "mudbrick", "sandstone", "marble", "plaster", "glazed", "granite"]);
+
+/**
+ * A kit material as built stone or brick, not a painted block: courses and
+ * joints on its walls, every block its own shade, weather on it, dirt where
+ * it meets the ground, small dark windows, and every house a little
+ * different from the next. All drawn in the piece's own metres, so the
+ * masonry stays on the wall as a city grows with distance, and fades out
+ * where it would be finer than the pixels.
+ */
+export function built(src: { name: string; color: THREE.Color }, kind: string) {
+  const mat = new THREE.MeshStandardMaterial({ color: src.color, roughness: 0.92, metalness: 0, flatShading: true, envMapIntensity: 0.3 });
+  const coursed = COURSED.has(src.name) ? 1 : 0;
+  const windows = coursed && LIVED_IN.test(kind) ? 1 : 0;
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vKitP;\nvarying vec3 vKitN;\nvarying float vKitId;")
+      .replace(
+        "#include <begin_vertex>",
+        `#include <begin_vertex>
+        // the piece's own metres (the kit is drawn in km) and its own facing
+        vKitP = position * 1000.0;
+        vKitN = normal;
+        #ifdef USE_INSTANCING
+        vKitId = fract(dot(vec2(instanceMatrix[3][0], instanceMatrix[3][2]), vec2(371.7, 517.3)));
+        #else
+        vKitId = 0.5;
+        #endif`,
+      );
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        `#include <common>
+        varying vec3 vKitP;
+        varying vec3 vKitN;
+        varying float vKitId;
+        float kitHash(vec2 c) { return fract(sin(dot(c, vec2(127.1, 311.7))) * 43758.5453); }
+        float kitNoise(vec2 p) {
+          vec2 i = floor(p);
+          vec2 f = p - i;
+          vec2 w = f * f * (3.0 - 2.0 * f);
+          return mix(mix(kitHash(i), kitHash(i + vec2(1.0, 0.0)), w.x), mix(kitHash(i + vec2(0.0, 1.0)), kitHash(i + vec2(1.0, 1.0)), w.x), w.y);
+        }`,
+      )
+      .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+        {
+          vec3 n = normalize(vKitN);
+          vec3 p = vKitP;
+          float wall = 1.0 - smoothstep(0.5, 0.8, abs(n.y));
+          // along the wall, whichever way it faces
+          float run = abs(n.x) > abs(n.z) ? p.z : p.x;
+          vec3 c = diffuseColor.rgb * 0.74;
+          #if ${coursed}
+          {
+            // courses 45 cm high, their joints staggered; every block its own shade
+            float row = p.y / 0.45;
+            float along = run / 1.0 + floor(row) * 0.5;
+            vec2 f = vec2(fract(along), fract(row));
+            vec2 aa = fwidth(vec2(along, row));
+            float fine = 1.0 - smoothstep(0.2, 0.55, max(aa.x, aa.y));
+            float joint = max(1.0 - smoothstep(0.0, 0.05 + aa.x, min(f.x, 1.0 - f.x)), 1.0 - smoothstep(0.0, 0.09 + aa.y, min(f.y, 1.0 - f.y)));
+            float block = kitHash(floor(vec2(along, row)) + vKitId * 91.0);
+            c *= 1.0 + ((block - 0.5) * 0.24 - 0.3 * joint) * wall * fine;
+          }
+          #endif
+          #if ${windows}
+          {
+            // small windows, high in the wall, and not in every bay
+            vec2 bay = vec2(run / 2.6, (p.y - 0.4) / 2.9);
+            vec2 f = fract(bay) - vec2(0.5, 0.62);
+            vec2 aa = fwidth(bay);
+            float open = step(0.45, kitHash(floor(bay) + vKitId * 37.0)) * step(0.0, p.y - 0.4);
+            float win = (1.0 - smoothstep(0.08, 0.08 + aa.x, abs(f.x))) * (1.0 - smoothstep(0.13, 0.13 + aa.y, abs(f.y)));
+            c = mix(c, vec3(0.035, 0.03, 0.028), win * open * wall * (1.0 - smoothstep(0.25, 0.6, max(aa.x, aa.y))));
+          }
+          #endif
+          // weather: blotches over the whole piece, streaks down its walls, dirt where it meets the ground
+          // (the finer blotches only where a pixel can show them: smaller than that they would sparkle)
+          vec2 bp = vec2(run * 1.7, p.y * 2.3 + vKitId * 17.0);
+          float small = mix(0.5, kitNoise(bp), 1.0 - smoothstep(0.25, 0.7, max(fwidth(bp.x), fwidth(bp.y))));
+          float blot = kitNoise(vec2(run * 0.35 + vKitId * 40.0, p.y * 0.5)) * 0.6 + small * 0.4;
+          c *= 0.84 + 0.3 * blot;
+          float streak = kitNoise(vec2(run * 2.2 + vKitId * 9.0, p.y * 0.12));
+          c *= 1.0 - 0.16 * wall * smoothstep(0.55, 0.9, streak);
+          c *= 1.0 - 0.3 * wall * (1.0 - smoothstep(0.0, 1.8, p.y));
+          // a roof's dust and wear
+          c *= 1.0 - 0.14 * (1.0 - wall) * kitNoise(p.xz * 0.15 + vKitId * 23.0);
+          // no two houses the same: lighter or darker, warmer or greyer
+          float id2 = fract(vKitId * 7.31);
+          c *= 0.86 + 0.26 * vKitId;
+          c = mix(c, vec3(dot(c, vec3(0.33))) * vec3(1.05, 1.0, 0.9), 0.25 * id2);
+          diffuseColor.rgb = c;
+        }`,
+      );
+  };
+  mat.customProgramCacheKey = () => `city-${coursed}${windows}`;
+  return mat;
 }
 
 /* -------------------------------------------------------------- geometry */

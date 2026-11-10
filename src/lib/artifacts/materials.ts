@@ -126,20 +126,31 @@ function loadJpg(loader: THREE.TextureLoader, path: string, color = false) {
   return t;
 }
 
-function loadSet(loader: THREE.TextureLoader, name: string, hasMetal = false): Maps {
+/**
+ * A scanned material's maps. `colour: false` leaves its colour map out (the
+ * weave or the grain is wanted, the scan's own hue is not: the linen is a
+ * blue cloth, the copper too red for bronze). `tile` is how many of the
+ * model's texture units (2.2 cubits, a metre) one repeat spans: dressed stone
+ * laid at a metre a tile would be bricks.
+ */
+function loadSet(loader: THREE.TextureLoader, name: string, { metal = false, colour = true, tile = 1 } = {}): Maps {
   const maps: Maps = {
-    diff: loadJpg(loader, `${BASE}/${name}/diff.jpg`, true),
     nor: loadJpg(loader, `${BASE}/${name}/nor.jpg`),
     rough: loadJpg(loader, `${BASE}/${name}/rough.jpg`),
   };
-  if (hasMetal) maps.metal = loadJpg(loader, `${BASE}/${name}/metal.jpg`);
+  if (colour) maps.diff = loadJpg(loader, `${BASE}/${name}/diff.jpg`, true);
+  if (metal) maps.metal = loadJpg(loader, `${BASE}/${name}/metal.jpg`);
+  if (tile !== 1) for (const t of Object.values(maps)) t?.repeat.setScalar(1 / tile);
   return maps;
 }
+
+/** a colour in linear light, which may be brighter than white: it lifts a scan that is darker than the thing */
+const lin = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b);
 
 function pbr(
   maps: Maps,
   opts: {
-    color?: number;
+    color?: number | THREE.Color;
     metalness?: number;
     roughness?: number;
     env?: number;
@@ -191,28 +202,33 @@ export function loadArtifactMaterials(): Promise<ArtifactMats> {
     matsPromise = new Promise((resolve, reject) => {
       const manager = new THREE.LoadingManager();
       const loader = new THREE.TextureLoader(manager);
-      const gold = loadSet(loader, "gold", true);
-      const bronze = loadSet(loader, "bronze", true);
+      const gold = loadSet(loader, "gold", { metal: true });
+      const bronze = loadSet(loader, "bronze", { metal: true, colour: false });
       const wood = loadSet(loader, "wood");
-      const linen = loadSet(loader, "linen");
+      const linen = loadSet(loader, "linen", { colour: false });
       const scarlet = loadSet(loader, "scarlet");
-      const stone = loadSet(loader, "stone");
+      // courses a cubit and a half high: "great stones, costly stones, and hewed stones" (1 Kings 5:17)
+      const stone = loadSet(loader, "stone", { tile: 3 });
       const mats: ArtifactMats = {
-        gold: pbr(gold, { color: 0xffe7b0, metalness: 0.88, roughness: 0.28, env: 1.8 }),
+        gold: pbr(gold, { color: 0xffd98a, metalness: 0.95, roughness: 0.24, env: 1.5 }),
         goldDark: pbr(gold, {
-          color: 0xe0c070,
-          metalness: 0.85,
-          roughness: 0.4,
-          env: 1.5,
+          color: 0xe2b35a,
+          metalness: 0.93,
+          roughness: 0.36,
+          env: 1.3,
         }),
-        bronze: pbr(bronze, { color: 0xffc090, metalness: 0.85, roughness: 0.38, env: 1.55 }),
-        wood: pbr(wood, { color: 0xb08a5e, roughness: 0.85, env: 0.35 }),
-        cedar: pbr(wood, { color: 0xb07a48, roughness: 0.8, env: 0.3 }),
-        linen: pbr(linen, { color: 0xf2ead8, roughness: 0.9, env: 0.2 }),
+        // bronze as cast and worked: a brown gold, not copper's red
+        bronze: pbr(bronze, { color: 0xcfa268, metalness: 0.9, roughness: 0.4, env: 1.3 }),
+        // the plank scan is a weathered grey-brown: each wood's own colour is laid over it
+        wood: pbr(wood, { color: lin(0.52, 0.37, 0.26), roughness: 0.85, env: 0.35 }),
+        cedar: pbr(wood, { color: lin(0.74, 0.4, 0.24), roughness: 0.8, env: 0.3 }),
+        linen: pbr(linen, { color: 0xf1ece0, roughness: 0.9, env: 0.2 }),
         scarlet: pbr(scarlet, { color: 0xb4261a, roughness: 0.75, env: 0.45 }),
-        stone: pbr(stone, { roughness: 0.95, env: 0.25 }),
-        stoneDark: pbr(stone, { color: 0x8a7d6e, roughness: 0.97, env: 0.2 }),
-        floor: pbr(stone, { color: 0xc4b49a, roughness: 0.98, env: 0.15 }),
+        // Jerusalem's pale limestone
+        stone: pbr(stone, { color: lin(1.16, 1.22, 1.3), roughness: 0.95, env: 0.25 }),
+        // a shade or two off, as blocks from one quarry are
+        stoneDark: pbr(stone, { color: lin(0.96, 1.0, 1.06), roughness: 0.97, env: 0.2 }),
+        floor: pbr(stone, { color: lin(0.9, 0.93, 0.98), roughness: 0.98, env: 0.15 }),
         water: new THREE.MeshStandardMaterial({
           color: 0x3d6b7a,
           metalness: 0.15,
@@ -226,10 +242,10 @@ export function loadArtifactMaterials(): Promise<ArtifactMats> {
           env: 1.1,
         }),
         bread: pbr(wood, { color: 0xd4b07a, roughness: 0.92, env: 0.2 }),
-        acacia: pbr(wood, { color: 0xc89060, roughness: 0.82, env: 0.3 }),
-        olive: pbr(wood, { color: 0xb8a070, roughness: 0.78, env: 0.3 }),
-        fir: pbr(wood, { color: 0xe0c49a, roughness: 0.85, env: 0.25 }),
-        pitch: pbr(wood, { color: 0x2a2018, roughness: 0.45, env: 0.6 }),
+        acacia: pbr(wood, { color: lin(0.86, 0.56, 0.32), roughness: 0.82, env: 0.3 }),
+        olive: pbr(wood, { color: lin(0.8, 0.64, 0.4), roughness: 0.78, env: 0.3 }),
+        fir: pbr(wood, { color: lin(1.15, 0.94, 0.66), roughness: 0.85, env: 0.25 }),
+        pitch: pbr(wood, { color: 0x1c1611, roughness: 0.5, env: 0.5 }),
         silver: pbr(gold, {
           color: 0xdfe4ea,
           metalness: 0.9,
@@ -253,7 +269,7 @@ export function loadArtifactMaterials(): Promise<ArtifactMats> {
           envMapIntensity: 0.4,
           side: THREE.DoubleSide,
         }),
-        ground: pbr(stone, { color: 0xb8a58a, roughness: 1, env: 0.1 }),
+        ground: pbr(stone, { color: lin(1.1, 1.1, 1.12), roughness: 1, env: 0.1 }),
         hideTan: new THREE.MeshStandardMaterial({ color: 0xb08a5a, roughness: 0.9 }),
         hideGrey: new THREE.MeshStandardMaterial({ color: 0x8a8580, roughness: 0.9 }),
         hideBrown: new THREE.MeshStandardMaterial({ color: 0x5e4030, roughness: 0.9 }),
@@ -265,6 +281,27 @@ export function loadArtifactMaterials(): Promise<ArtifactMats> {
     });
   }
   return matsPromise;
+}
+
+/**
+ * The materials lit by a stage's own surroundings. A scene's environment is
+ * applied to every material at one strength (three ignores a material's own
+ * `envMapIntensity` there), which leaves gold as dull as wood: here each
+ * material carries the environment itself, at its own strength times `gain`,
+ * so metal mirrors the room and cloth and stone barely do. A stage makes its
+ * set once (the environment belongs to its renderer).
+ */
+export function withEnvironment(m: ArtifactMats, env: THREE.Texture, gain = 1): ArtifactMats {
+  const out = { ...m } as Record<string, THREE.Material>;
+  for (const [key, mat] of Object.entries(m)) {
+    if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
+    const c = mat.clone();
+    c.name = mat.name;
+    c.envMap = env;
+    c.envMapIntensity = mat.envMapIntensity * gain;
+    out[key] = c;
+  }
+  return out as unknown as ArtifactMats;
 }
 
 /** Tile a material to cubit size so a 300-cubit hull is not one stretched jpeg. */
@@ -287,7 +324,8 @@ export function tileMaterial(
     if (!src) continue;
     const t = src.clone();
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(ru, rv);
+    // times the scan's own scale (dressed stone repeats every few cubits, not every one)
+    t.repeat.set(ru * src.repeat.x, rv * src.repeat.y);
     t.needsUpdate = true;
     c[key] = t;
   }

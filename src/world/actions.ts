@@ -43,7 +43,7 @@ export function showStructure(id: ArtifactId, { fly = true } = {}) {
   if (!placement || !fly) return;
   useJourneyStore.getState().setPlaying(false);
   const site = siteNear(placement, world.year);
-  world.fly({ center: site.coord, zoom: placement.zoom, pitch: 62, bearing: -18 });
+  world.fly({ center: site.coord, zoom: placement.zoom, pitch: 64, bearing: -40 });
 }
 
 /** the step a structure has reached in the current year (last step once built) */

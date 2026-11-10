@@ -1,0 +1,20 @@
+{
+  "name": "visual-bible-campaign",
+  "private": true,
+  "description": "Social campaign video for Visual Bible, rendered with HyperFrames",
+  "scripts": {
+    "serve": "node capture/serve.mjs ../out 4318",
+    "capture": "node capture/shots.mjs",
+    "compose": "node video/make-wide.mjs",
+    "lint": "npm run compose && hyperframes lint video && hyperframes lint video-wide",
+    "render:vertical": "hyperframes render video --output renders/visual-bible-vertical.mp4 --crf 19 --max-bitrate 16M --keyframe-interval 2",
+    "render:wide": "npm run compose && hyperframes render video-wide --output renders/visual-bible-wide.mp4 --crf 19 --max-bitrate 16M --keyframe-interval 2",
+    "render": "npm run render:vertical && npm run render:wide"
+  },
+  "devDependencies": {
+    "@fontsource/noto-sans-hebrew": "^5.3.0",
+    "gsap": "^3.14.2",
+    "hyperframes": "^0.9.21",
+    "playwright-core": "^1.65.0"
+  }
+}
