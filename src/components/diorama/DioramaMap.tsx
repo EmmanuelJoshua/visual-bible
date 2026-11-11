@@ -166,6 +166,10 @@ export default function DioramaMap({ padding, onStage }: Props) {
     // how the viewer has set the camera (their zoom and tilt, and their turn against the journey's lean):
     // kept as playback follows the journey, so pressing play doesn't throw it away
     let own: { zoom: number; pitch: number; bearing: number } | null = null;
+    // a place was asked for (a search, a structure, a story's shot): the camera stays there, whatever
+    // the journey does behind it, until the viewer plays, steps or picks a journey
+    let held = false;
+    let heldAt = 0;
 
     const traveller = new DioramaMarker(travellerEl, { anchor: "center", interactive: false, priority: 0 })
       .setLngLat(markerAt(journeyById.get(store.getState().journeyId)!, 0))
@@ -230,6 +234,11 @@ export default function DioramaMap({ padding, onStage }: Props) {
       drawRoute(j, t, reducedMotion);
       traveller.setLngLat(reducedMotion ? j.stops[Math.round(t)].coord : markerAt(j, t));
       if (f) return;
+      if (held) {
+        // the clock moved to the place's own time in the same breath as the camera: that isn't a new choice of journey
+        if (!journeyChanged || performance.now() - heldAt < 250) return;
+        held = false;
+      }
 
       const stop = Math.round(t);
       if (userMoved && !journeyChanged) {
@@ -260,6 +269,8 @@ export default function DioramaMap({ padding, onStage }: Props) {
         flyTo({ center: s.focus.coord, zoom: 9.2, pitch: 55, bearing: 0 }, s.reducedMotion);
         return;
       }
+      // playing, stepping or jumping along the journey takes the camera back
+      if ((s.playing && !prev.playing) || (s.target !== null && s.target !== prev.target) || s.flight !== prev.flight) held = false;
       if (s.journeyId !== prev.journeyId) sync(true);
       else if ((prev.focus && !s.focus) || s.flight !== prev.flight) sync(false, true);
       else if (s.t !== prev.t) sync(false);
@@ -267,6 +278,8 @@ export default function DioramaMap({ padding, onStage }: Props) {
     // people, structures and story scenes ask for the camera through the world
     const flyToCommand = (c: CameraCommand) => {
       cameraNonce.current = c.nonce;
+      held = true;
+      heldAt = performance.now();
       const { center, zoom, pitch = 55, bearing = 0 } = c;
       flyTo({ center, zoom, pitch, bearing }, store.getState().reducedMotion);
     };

@@ -570,8 +570,8 @@ function scaleFor(km: number, reachM: number) {
   const reach = Math.max(reachM, 150) / 1000;
   const most = Math.min(8, Math.max(1, 7 / reach));
   const s = Math.min(most, Math.max(1, (km * 0.075) / reach));
-  // in steps of about 5%, so a city isn't placed again on every movement
-  return s < 1.03 ? 1 : Math.exp(Math.round(Math.log(s) / 0.05) * 0.05);
+  // in steps of about 2%: small enough that a city shrinks smoothly as the camera comes down
+  return s < 1.02 ? 1 : Math.exp(Math.round(Math.log(s) / 0.02) * 0.02);
 }
 
 /** the share of a city's blocks drawn from `km` away */

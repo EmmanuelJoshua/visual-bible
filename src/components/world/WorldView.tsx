@@ -26,6 +26,7 @@ import { useWorldStore, type Layers } from "@/world/store";
 import { Inspector } from "./Inspector";
 import { Overlays } from "./Overlays";
 import { StoryLauncher, StoryOverlay } from "./StoryOverlay";
+import { FindPlace, OverviewButton, Welcome } from "./Wayfinding";
 
 // WebGL + window access: never prerender the map or its marker layers
 const DioramaMap = dynamic(() => import("@/components/diorama/DioramaMap"), {
@@ -149,6 +150,8 @@ export function WorldView() {
           {!inStory && <JourneyPicker />}
           <StoryLauncher />
           {!inStory && <LayersMenu />}
+          {!inStory && <FindPlace />}
+          {!inStory && <OverviewButton />}
         </div>
         <div className="mt-3 px-4 sm:px-6">
           <div className="pointer-events-auto inline-block">
@@ -185,6 +188,7 @@ export function WorldView() {
         </div>
       </div>
 
+      <Welcome />
       <Overlays />
       <Suspense fallback={null}>
         <StoryParam />

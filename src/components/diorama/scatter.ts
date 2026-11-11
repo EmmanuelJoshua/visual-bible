@@ -36,13 +36,13 @@ const CAPACITY: Record<Kind, [number, number]> = {
 };
 /** the far kit's leaf colours (linear), matched to the atlas's at the distance the near trees hand over */
 const FAR_LEAF: Partial<Record<Kind, THREE.Color>> = {
-  tree_olive: new THREE.Color(0.2, 0.25, 0.15),
+  tree_olive: new THREE.Color(0.105, 0.135, 0.08),
   tree_oak: new THREE.Color(0.075, 0.13, 0.03),
   tree_pine: new THREE.Color(0.05, 0.1, 0.035),
   tree_cypress: new THREE.Color(0.025, 0.055, 0.02),
   tree_palm: new THREE.Color(0.1, 0.16, 0.04),
-  tree_acacia: new THREE.Color(0.18, 0.21, 0.08),
-  shrub: new THREE.Color(0.12, 0.15, 0.06),
+  tree_acacia: new THREE.Color(0.12, 0.14, 0.06),
+  shrub: new THREE.Color(0.085, 0.1, 0.05),
 };
 const SOFT: Partial<Record<Kind, true>> = { tree_olive: true, tree_cypress: true, tree_palm: true, tree_pine: true, tree_oak: true, tree_acacia: true, shrub: true, grass: true };
 /**
@@ -253,7 +253,7 @@ export class Scatter {
     const step = Math.max(0.04, d * 0.06);
     const q = (v: number, k: number) => Math.round(v / k);
     const clearings = [...s.clearings.values()].map((c) => `${c.at[0].toFixed(4)}${c.at[1].toFixed(4)}${c.km.toFixed(3)}`).join();
-    const key = [q(cam.x, step), q(cam.y, step), q(cam.z, step), q(dir.x, 0.08), q(dir.y, 0.08), q(dir.z, 0.08), q(Math.log(s.exaggeration), 0.02), s.albedoGen, clearings].join(",");
+    const key = [q(cam.x, step), q(cam.y, step), q(cam.z, step), q(dir.x, 0.08), q(dir.y, 0.08), q(dir.z, 0.08), q(Math.log(s.exaggeration), 0.02), s.albedoGen, clearings, d > SCATTER_BELOW * 0.6 ? q(d, SCATTER_BELOW * 0.012) : 0].join(",");
     const gen = s.terrain?.gen ?? 0;
     // the towns standing changed with the year: grow every cell again round them
     const version = s.cities?.version ?? 0;
@@ -473,6 +473,8 @@ export class Scatter {
     // tree's height, not twice the temple's
     const camera = s.camera.position.distanceTo(s.controls.target);
     const life = smoothstep(0.3, 1.6, camera);
+    // and they rise out of the ground as the camera comes down to where they show, not all at once
+    const risen = 1 - smoothstep(SCATTER_BELOW * 0.6, SCATTER_BELOW * 0.97, camera);
     for (const list of lists) {
       const far = Math.min(2.4, 1 + 0.22 * list.d);
       for (const it of list.items) {
@@ -493,7 +495,7 @@ export class Scatter {
         p.y = s.yOf(it.m) - it.sink / 1000;
         q.setFromAxisAngle(up, it.yaw);
         const k = (1 + ((GROW[it.kind] ?? 1) - 1) * life) * (SOFT[it.kind] ? 1 + (far - 1) * life : 1);
-        sc.set(it.sx * k, it.sy * k, it.sz * k);
+        sc.set(it.sx * k * (0.6 + 0.4 * risen), it.sy * k * risen, it.sz * k * (0.6 + 0.4 * risen));
         m.compose(p, q, sc);
         m.toArray(set.matrix.array, i * 16);
         set.color.array[i * 3] = it.tint[0];

@@ -644,9 +644,10 @@ export class Terrain {
             // taller the further off, as the grain that shows is coarser: it stays a few pixels of relief
             bumpH = (relief - 0.5) * show * (1.0 + viewKm * 0.45) * (1.0 - smoothstep(160.0, 320.0, viewKm));
             // close up the painting's colours give way to the land's own: quieter, limestone-pale on the hills
-            float close = 1.0 - smoothstep(4.0, 60.0, viewKm);
+            // (late and slowly: the painting's hues are what tell one country from another on the way down)
+            float close = 1.0 - smoothstep(1.0, 12.0, viewKm);
             vec3 grey = vec3(dot(albedo, vec3(0.33)));
-            vec3 land = mix(albedo, grey * vec3(1.06, 1.0, 0.9), 0.32 * close);
+            vec3 land = mix(albedo, grey * vec3(1.06, 1.0, 0.9), 0.22 * close);
             land = mix(land, land * 1.12 + 0.03, (hill + rock) * 0.35 * close);
             // the painting's colour, varied as the ground varies (stones paler, earth darker, grass greener)...
             vec3 col = land * mix(vec3(1.0), ratio, show);

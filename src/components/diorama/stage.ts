@@ -1458,7 +1458,8 @@ export class DioramaStage {
     // down among the land the light is the morning sun's, from the east-south-east: it falls on the
     // fronts of the tabernacle and the temple, which face the sunrise. It comes round while the land
     // still wears its render, before the live-lit land shows
-    const dir = this.sun.copy(this.studioSun).lerp(MORNING_SUN, 1 - smoothstep(260, 420, d)).normalize();
+    // (round by 420 km, where the first of the live-lit land shows through: it never shows turning)
+    const dir = this.sun.copy(this.studioSun).lerp(MORNING_SUN, 1 - smoothstep(430, 680, d)).normalize();
     const right = _v1.crossVectors(_up, dir).normalize();
     const upward = _v2.crossVectors(dir, right);
     const tx = this.controls.target.dot(right);
@@ -1496,7 +1497,7 @@ export class DioramaStage {
     shafts.uTime.value = time;
     shafts.uStrength.value = 1 - outdoors * 0.85;
     // the lens's shallow focus is for the model on its plinth: over the land itself, nearly none
-    this.dof.bokehScale = 0.65 * (0.08 + 0.92 * smoothstep(150, 700, d));
+    this.dof.bokehScale = 0.65 * (0.08 + 0.92 * smoothstep(320, 950, d));
     this.grade.hue.saturation = -0.14 + 0.12 * outdoors;
     this.grade.contrast.contrast = 0.06 + 0.08 * outdoors;
     if (this.studio.dust) {
@@ -1574,7 +1575,15 @@ export class DioramaStage {
     this.ripple.uTime.value = time;
     this.ripple.uTile.value = tile;
     const ripple = 0.25 * (1 - smoothstep(4, 40, d));
-    for (const l of this.lakes) (l.mesh.material as THREE.MeshPhysicalMaterial).normalScale.setScalar(ripple);
+    for (const l of this.lakes) {
+      const m = l.mesh.material as THREE.MeshPhysicalMaterial;
+      m.normalScale.setScalar(ripple);
+      // from high up a lake is a flat mirror, and catches the whole sun as one white blot: matte there
+      m.specularIntensity = 0.6 * near;
+      m.clearcoat = 0.35 * near;
+      m.envMapIntensity = 0.25 + 0.95 * near;
+      m.roughness = 0.2 + 0.5 * (1 - near);
+    }
   }
 
   dispose() {
